@@ -2,77 +2,100 @@
 
 **Progress-Guided Adaptive Practice for Long-Horizon Robotic Manipulation Reinforcement Learning**
 
-[Project website source](https://github.com/ReFocus-Robotics/refocus.github.io) · [Installation](docs/INSTALL.md) · [Training details](docs/REFOCUS.md)
+[Project website source](https://github.com/ReFocus-Robotics/refocus.github.io) ·
+[Method notes](docs/REFOCUS.md) ·
+[StructRL baselines](docs/REPRODUCE.md)
 
 <p align="center">
-  <img src="docs/assets/refocus-overview.png" alt="ReFocus alternates global policy training and targeted practice, guided by subtask progress and practice history." width="860">
+  <img src="docs/assets/refocus-overview.png" alt="ReFocus alternates full-task training and targeted practice using subtask progress and practice history." width="860">
 </p>
 
-ReFocus alternates Global PPO and Local PPO on a shared π0.5 policy. Stage-balanced rewards provide feedback on verified subtask completions. A Scheduler uses progress and practice history to select bottleneck windows. The Local phase practices these windows from normal starts or restored simulation states.
+- [Overview](#overview)
+- [Environment setup](#environment-setup)
+- [Training](#training)
+- [Local checks](#local-checks)
+- [Repository structure](#repository-structure)
+- [Attribution and license](#attribution-and-license)
 
-This repository provides the training code, configuration, and launch scripts for RoboCasa365 Composite-Seen in simulation. Supply a compatible Composite-Seen SFT checkpoint to initialize training.
+## Overview
 
-## Setup
+ReFocus alternates Global and Local PPO on a shared π0.5 policy. Global PPO rewards verified subtask completions with a stage-balanced budget. A visual Scheduler uses validation rollouts and practice history to select bottleneck windows. Local PPO concentrates interaction on those windows through normal-start and snapshot-restored rollouts.
 
-1. Follow the [installation guide](docs/INSTALL.md) to prepare the training environment, simulator assets, and π0.5 SFT checkpoint. Install the pinned OpenPI and simulator sources with `bash scripts/setup_upstream.sh --openpi`.
-2. From the repository root, configure the environment on each Ray node. Set these shell variables to the shared checkpoint path and the address of your Ray head node.
+This release contains the simulation training code and launch scripts for **RoboCasa365 Composite-Seen**. Training starts from a compatible π0.5 PyTorch SFT checkpoint supplied by the user.
 
-   ```bash
-   export PI05_SFT_CKPT
-   export RAY_HEAD_IP
-   source examples/robocasa365/rlinf/rsi_env.sh
-   export RAY_ADDRESS="$RAY_HEAD_IP:$RAY_PORT"
-   ```
+## Environment setup
 
-3. Install the ReFocus hooks once in the shared, StructRL-patched RLinf checkout.
+The training recipe uses two Linux x86-64 nodes with eight NVIDIA GPUs each. Set up the same Python 3.11 Conda environment on both nodes.
 
-   ```bash
-   "$VENV/bin/python" scripts/install_rsi_hooks.py "$RLINF_ROOT"
-   ```
+~~~bash
+git clone https://github.com/ReFocus-Robotics/ReFocus.git
+cd ReFocus
+conda create -n refocus --override-channels -c conda-forge python=3.11 pip ffmpeg=7
+conda activate refocus
+~~~
 
-   Start the [Ray head](examples/robocasa365/rlinf/ray_head_8gpu.sh) and the
-   [Ray worker](examples/robocasa365/rlinf/ray_worker_8gpu.sh) using the same
-   shared `STRUCTRL_RSI_ROOT` on both nodes.
+Follow the [RoboCasa365 installation steps](docs/INSTALL.md#refocus-on-robocasa365) to install the pinned training stack and download simulator assets. Make the checkout, run directory, and SFT checkpoint available at the same absolute paths on both nodes.
 
 ## Training
 
-The [RoboCasa365 training configuration](configs/robocasa365_ppo_openpi_pi05_refocus_16gpu.yaml)
-uses 256 parallel training environments on two nodes with eight actor GPUs
-each. The global batch is 512, with a microbatch of 32 per GPU. The
-coordinator runs three rounds of 25 Global and 25 Local PPO updates and
-evaluates five normal-start episodes per task at each diagnostic checkpoint.
+### 1. Configure both Ray nodes
 
-Set `ADVISOR_API_KEY` on the coordinator after starting Ray. The visual
-Scheduler sends evaluation montages to the configured endpoint, which must
-accept image inputs.
+Activate the environment and run these commands from the repository root on each node. Replace the checkpoint and head IP with your own values.
 
-```bash
-scripts/run_robocasa_rsi.sh \
+~~~bash
+conda activate refocus
+export VENV="$CONDA_PREFIX"
+export PI05_SFT_CKPT=/path/to/composite-seen-pytorch-checkpoint
+export RAY_HEAD_IP=10.0.0.10
+source examples/robocasa365/rlinf/rsi_env.sh
+export RAY_ADDRESS="$RAY_HEAD_IP:$RAY_PORT"
+~~~
+
+### 2. Install the hooks and start Ray
+
+Install the hooks once in the shared RLinf checkout, before starting Ray.
+
+~~~bash
+python scripts/install_rsi_hooks.py "$RLINF_ROOT"
+~~~
+
+Run `bash examples/robocasa365/rlinf/ray_head_8gpu.sh` on the head node and
+`bash examples/robocasa365/rlinf/ray_worker_8gpu.sh` on the worker node.
+
+### 3. Launch ReFocus on the head node
+
+Set `ADVISOR_API_KEY`, `ADVISOR_BASE_URL`, and `ADVISOR_MODEL` on the head node after Ray starts. The endpoint needs to accept image inputs for the visual Scheduler. See the [Scheduler setup](docs/ADVISOR_COMPARISON.md) for provider-specific settings.
+
+~~~bash
+bash scripts/run_robocasa_rsi.sh \
   --rlinf-root "$RLINF_ROOT" --run-root "$STRUCTRL_RSI_ROOT" \
   --advisor-provider openai-compatible \
   --advisor-base-url "$ADVISOR_BASE_URL" --advisor-model "$ADVISOR_MODEL"
-```
+~~~
 
-See [Scheduler configuration](docs/ADVISOR_COMPARISON.md) for provider-specific
-settings. The [method notes](docs/REFOCUS.md) describe rollout modes, snapshot
-restoration, and the optional milestone configuration.
+The [training configuration](configs/robocasa365_ppo_openpi_pi05_refocus_16gpu.yaml) uses **256 training environments**, a **global batch of 512**, and a **microbatch of 32 per GPU**. The coordinator runs three rounds of 25 Global and 25 Local PPO updates. At each diagnostic checkpoint, it evaluates five normal-start episodes per task. Outputs are written to `$STRUCTRL_RSI_ROOT`.
 
 ## Local checks
 
-```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements-test.txt
-.venv/bin/python -m pytest
-.venv/bin/python -m structrl.rsi.run \
-  --rlinf-root ./RLinf --run-root ./runs/dry-run --dry-run
-```
+The CPU test suite and schedule preview run without Ray, simulator assets, or a checkpoint.
 
-The dry run prints the training schedule. The [installation guide](docs/INSTALL.md)
-specifies the simulator and training dependencies.
+~~~bash
+conda create -n refocus-test --override-channels -c conda-forge python=3.11 numpy pillow pytest pyyaml
+conda activate refocus-test
+python -m pytest
+python -m structrl.rsi.run --rlinf-root ./RLinf --run-root ./runs/dry-run --dry-run
+~~~
 
-## Attribution and licenses
+## Repository structure
 
-ReFocus builds on StructRL and RLinf. StructRL-derived material is distributed
-under the upstream [CC BY-NC 4.0 license](LICENSE). See [NOTICE](NOTICE),
-[third-party licenses](THIRD-PARTY-LICENSES), and [source provenance](SOURCE_SNAPSHOT.md)
-for details.
+| Path | Purpose |
+| --- | --- |
+| [`refocus/`](refocus/) | Stage-balanced progress and milestone rewards |
+| [`structrl/rsi/`](structrl/rsi/) | Training coordinator, Scheduler integration, and snapshot restoration |
+| [`configs/`](configs/) | Hydra training and simulator configurations |
+| [`scripts/`](scripts/) | Upstream setup, hook installation, and training entry points |
+| [`examples/robocasa365/`](examples/robocasa365/) | Ray launch scripts and milestone configuration example |
+
+## Attribution and license
+
+ReFocus builds on [StructRL](https://github.com/amazon-science/StructRL) and [RLinf](https://github.com/RLinf/RLinf). StructRL-derived material is distributed under the upstream [CC BY-NC 4.0 license](LICENSE). See [NOTICE](NOTICE), [third-party licenses](THIRD-PARTY-LICENSES), and [source provenance](SOURCE_SNAPSHOT.md).

@@ -1,6 +1,54 @@
 # Installation
 
-## 1. Upstream code
+## ReFocus on RoboCasa365
+
+Run the setup on Linux x86-64 with an NVIDIA driver that supports CUDA 12.4
+and EGL available for headless MuJoCo rendering. Start with the
+[Conda environment in the README](../README.md#environment-setup).
+
+### Install the training stack
+
+From the ReFocus repository root, with the `refocus` environment active:
+
+~~~bash
+export PROJECT_ROOT="$PWD"
+bash scripts/setup_upstream.sh
+python -m pip install --no-deps -r envs/rlinf-openpi-train.txt
+python -m pip install --no-deps -e ./robosuite -e ./robocasa
+
+site_packages=$(python -c 'import sysconfig; print(sysconfig.get_path("purelib"))')
+cp -r "$site_packages/openpi/models_pytorch/transformers_replace/." "$site_packages/transformers/"
+bash RLinf/requirements/embodied/download_assets.sh --assets openpi
+~~~
+
+Conda supplies Python and FFmpeg. The [training package list](../envs/rlinf-openpi-train.txt)
+pins the CUDA-enabled PyTorch 2.6 stack, FlashAttention, Ray, MuJoCo, and
+OpenPI. `--no-deps` uses the versions in the archived environment directly,
+including the PyTorch version selected by RLinf. RLinf is imported from the
+patched source checkout. The last two commands install OpenPI’s Transformers
+overrides and tokenizer using the same procedure as the pinned
+[RLinf installer](https://github.com/RLinf/RLinf/blob/499363965432843cdbae607a561d59b68f785d34/requirements/install.sh#L1089-L1100).
+Install the environment on each node and run the upstream setup once for a
+shared checkout.
+
+### Download simulator assets and prepare the checkpoint
+
+~~~bash
+python -m robocasa.scripts.setup_macros
+python -m robocasa.scripts.download_kitchen_assets
+~~~
+
+Download the assets once per simulator checkout. Set `PI05_SFT_CKPT` to a
+compatible Composite-Seen **PyTorch** SFT export, including its
+`robocasa365/norm_stats.json`. The checkpoint path must be readable from
+both nodes. See the [SFT recipe](#3-data-and-sft-checkpoints) if you need
+to produce the checkpoint.
+
+Continue with [distributed training](../README.md#training).
+
+## Inherited StructRL recipes
+
+### 1. Upstream code
 
 StructRL is a set of patches and add-on modules for the upstream projects below, pinned to the commits
 used in the paper.
@@ -27,9 +75,9 @@ bash scripts/setup_upstream.sh --libero     # + LIBERO (second RLinf in $PROJECT
 export LIBERO_RL_ROOT=$PROJECT_ROOT/libero_rl CKPT_ROOT=$PROJECT_ROOT/ckpts
 ```
 
-## 2. Python environments
+### 2. Python environments
 
-The launchers use the virtual environments below, under `$PROJECT_ROOT`. `envs/` has the frozen package
+The inherited launchers use the virtual environments below, under `$PROJECT_ROOT`. `envs/` has the frozen package
 list of each one (Python 3.11 unless noted). Install the list, then the patched checkouts it names with
 `pip install --no-deps -e`. RLinf itself is used from source through `PYTHONPATH`.
 
@@ -44,7 +92,7 @@ list of each one (Python 3.11 unless noted). Install the list, then the patched 
 | `openpi/.venv` | `uv sync` in the openpi fork | π0.5 SFT and policy server on RoboCasa365 |
 | `.venv-rlinf-openpi-eval` | robocasa, robosuite, `openpi-client` | π0.5 evaluation client on RoboCasa365 |
 
-## 3. Data and SFT checkpoints
+### 3. Data and SFT checkpoints
 
 | What | Source | Location |
 |---|---|---|
@@ -57,9 +105,8 @@ list of each one (Python 3.11 unless noted). Install the list, then the patched 
 LIBERO reads its asset paths from `$LIBERO_CONFIG_PATH/config.yaml` (default `~/.libero`), which LIBERO
 creates on first import.
 
-## 4. Cluster
+### 4. Cluster
 
-The launchers are Slurm batch scripts: training uses 4 nodes with 8 GPUs each, evaluation 2 nodes with
-8 GPUs each. Submit from the repository root and pass the partition with
+The inherited Slurm batch scripts use 4 nodes with 8 GPUs each for training and 2 nodes with 8 GPUs each for evaluation. Submit from the repository root and pass the partition with
 `sbatch --partition` when your cluster requires it. Slurm logs go to `logs/`.
 Use the network interface prefix for your cluster in the NCCL settings.
