@@ -2,10 +2,10 @@
 
 **Progress-Guided Adaptive Practice for Long-Horizon Robotic Manipulation Reinforcement Learning**
 
-[Project website source](https://github.com/ReFocus-Robotics/refocus.github.io) ·
-[Installation guide](docs/INSTALL.md#refocus-on-robocasa365) ·
-[Method notes](docs/REFOCUS.md) ·
-[StructRL baselines](docs/REPRODUCE.md)
+[![arXiv Paper](https://img.shields.io/badge/arXiv-Paper-b31b1b?logo=arxiv&logoColor=white)](https://github.com/ReFocus-Robotics/ReFocus)
+[![Project Website](https://img.shields.io/badge/Project-Website-0077b5)](https://github.com/ReFocus-Robotics/ReFocus)
+[![License CC BY-NC 4.0](https://img.shields.io/badge/License-CC_BY--NC_4.0-green)](LICENSE)
+[![Python 3.11](https://img.shields.io/badge/Python-3.11-3776ab?logo=python&logoColor=white)](#environment-setup)
 
 <p align="center">
   <img src="docs/assets/refocus-overview.png" alt="ReFocus alternates full-task training and targeted practice using subtask progress and practice history." width="860">
@@ -18,6 +18,7 @@
 - [🏋️ Training](#training)
 - [📁 Repository structure](#repository-structure)
 - [📄 Attribution and license](#attribution-and-license)
+- [🙏 Acknowledgments](#acknowledgments)
 
 <a name="overview"></a>
 
@@ -93,9 +94,16 @@ The [training configuration](configs/robocasa365_ppo_openpi_pi05_refocus_16gpu.y
 | [`configs/`](configs/) | Hydra training and simulator configurations |
 | [`scripts/`](scripts/) | Upstream setup, hook installation, and training entry points |
 | [`examples/robocasa365/`](examples/robocasa365/) | Ray launch scripts and milestone configuration example |
+| [`docs/`](docs/) | [Installation guide](docs/INSTALL.md), [method notes](docs/REFOCUS.md), and [StructRL baselines](docs/REPRODUCE.md) |
 
 <a name="attribution-and-license"></a>
 
 ## 📄 Attribution and license
 
-ReFocus builds on [StructRL](https://github.com/amazon-science/StructRL) and [RLinf](https://github.com/RLinf/RLinf). StructRL-derived material is distributed under the upstream [CC BY-NC 4.0 license](LICENSE). See [NOTICE](NOTICE), [third-party licenses](THIRD-PARTY-LICENSES), and [source provenance](SOURCE_SNAPSHOT.md).
+StructRL-derived material is distributed under the upstream [CC BY-NC 4.0 license](LICENSE). See [NOTICE](NOTICE), [third-party licenses](THIRD-PARTY-LICENSES), and [source provenance](SOURCE_SNAPSHOT.md).
+
+<a name="acknowledgments"></a>
+
+## 🙏 Acknowledgments
+
+We thank the [StructRL](https://github.com/amazon-science/StructRL) and [RLinf](https://github.com/RLinf/RLinf) teams for open-sourcing the training code that ReFocus builds on. We also thank the [LIBERO](https://github.com/Lifelong-Robot-Learning/LIBERO) and [RoboCasa365](https://github.com/robocasa/robocasa) teams for developing and maintaining their simulation benchmarks.
