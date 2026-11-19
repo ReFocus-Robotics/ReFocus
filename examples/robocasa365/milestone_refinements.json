@@ -1,0 +1,9 @@
+{
+  "StoreLeftoversInBowl": {
+    "target": "bowl_in_fridge",
+    "shares": {
+      "bowl_grasped": 0.5,
+      "bowl_in_fridge": 0.5
+    }
+  }
+}
