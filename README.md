@@ -48,13 +48,14 @@ conda activate refocus
 
 ## 🏋️ Training
 
-On RoboCasa365, we first fine-tune π<sub>0.5</sub> on demonstrations, then initialize ReFocus RL with the resulting policy.
+### 1. SFT initialization
 
-### 1. Supervised fine-tuning (SFT)
-
-Use the [RoboCasa365 SFT launcher](launch/sft_pi05.sh) and the [SFT setup instructions](docs/INSTALL.md#3-data-and-sft-checkpoints). Convert the resulting JAX checkpoint to PyTorch with the [OpenPI conversion script](https://github.com/robocasa-benchmark/openpi/blob/5a6beda9ff99da30b4e1b59320f6a32971d7c397/examples/convert_jax_model_to_pytorch.py). Set `PI05_SFT_CKPT` to the exported checkpoint, or use an existing compatible SFT checkpoint.
+- **RoboCasa365.** Fine-tune π<sub>0.5</sub> on demonstrations using the [SFT launcher](launch/sft_pi05.sh) and [setup instructions](docs/INSTALL.md#3-data-and-sft-checkpoints). Convert the resulting JAX checkpoint to PyTorch with the [OpenPI conversion script](https://github.com/robocasa-benchmark/openpi/blob/5a6beda9ff99da30b4e1b59320f6a32971d7c397/examples/convert_jax_model_to_pytorch.py), then set `PI05_SFT_CKPT` to the export.
+- **LIBERO-Long.** Initialize RL directly from the [π<sub>0.5</sub> SFT checkpoint released by RLinf](https://huggingface.co/RLinf/RLinf-Pi05-LIBERO-130-fullshot-SFT).
 
 ### 2. ReFocus RL post-training
+
+The commands below run ReFocus RL on RoboCasa365.
 
 #### Configure both Ray nodes
 
