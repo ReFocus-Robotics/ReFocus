@@ -41,29 +41,35 @@ conda activate refocus
 
 ### Data and checkpoints
 
-- **RoboCasa365 Composite-Seen.** Prepare the [simulation assets](docs/INSTALL.md#download-simulator-assets-and-prepare-the-checkpoint) and a Composite-Seen π<sub>0.5</sub> PyTorch SFT checkpoint with `robocasa365/norm_stats.json`.
+- **RoboCasa365.** Prepare the [simulation assets](docs/INSTALL.md#download-simulator-assets-and-prepare-the-checkpoint) and, for SFT, the [demonstration dataset](https://robocasa.ai/docs/build/html/datasets/using_datasets.html) and pretrained π<sub>0.5</sub> weights. RL starts from a π<sub>0.5</sub> PyTorch SFT checkpoint with `robocasa365/norm_stats.json`.
 - **LIBERO-Long.** Prepare the [LIBERO simulator assets and benchmark initial states](https://github.com/RLinf/LIBERO) and the [RLinf π<sub>0.5</sub> LIBERO SFT checkpoint](https://huggingface.co/RLinf/RLinf-Pi05-LIBERO-130-fullshot-SFT).
 
 <a name="training"></a>
 
 ## 🏋️ Training
 
-The launcher below runs ReFocus on RoboCasa365 Composite-Seen.
+On RoboCasa365, we first fine-tune π<sub>0.5</sub> on demonstrations, then initialize ReFocus RL with the resulting policy.
 
-### 1. Configure both Ray nodes
+### 1. Supervised fine-tuning (SFT)
+
+Use the [RoboCasa365 SFT launcher](launch/sft_pi05.sh) and the [SFT setup instructions](docs/INSTALL.md#3-data-and-sft-checkpoints). Convert the resulting JAX checkpoint to PyTorch with the [OpenPI conversion script](https://github.com/robocasa-benchmark/openpi/blob/5a6beda9ff99da30b4e1b59320f6a32971d7c397/examples/convert_jax_model_to_pytorch.py). Set `PI05_SFT_CKPT` to the exported checkpoint, or use an existing compatible SFT checkpoint.
+
+### 2. ReFocus RL post-training
+
+#### Configure both Ray nodes
 
 Activate the environment and run these commands from the repository root on each node. Replace the checkpoint and head IP with your own values.
 
 ~~~bash
 conda activate refocus
 export VENV="$CONDA_PREFIX"
-export PI05_SFT_CKPT=/path/to/composite-seen-pytorch-checkpoint
+export PI05_SFT_CKPT=/path/to/robocasa365-pytorch-sft-checkpoint
 export RAY_HEAD_IP=10.0.0.10
 source examples/robocasa365/rlinf/rsi_env.sh
 export RAY_ADDRESS="$RAY_HEAD_IP:$RAY_PORT"
 ~~~
 
-### 2. Install the hooks and start Ray
+#### Install the hooks and start Ray
 
 Install the hooks once in the shared RLinf checkout, before starting Ray.
 
@@ -74,7 +80,7 @@ python scripts/install_rsi_hooks.py "$RLINF_ROOT"
 Run `bash examples/robocasa365/rlinf/ray_head_8gpu.sh` on the head node and
 `bash examples/robocasa365/rlinf/ray_worker_8gpu.sh` on the worker node.
 
-### 3. Launch ReFocus on the head node
+#### Launch ReFocus on the head node
 
 Set `ADVISOR_API_KEY`, `ADVISOR_BASE_URL`, and `ADVISOR_MODEL` on the head node after Ray starts. The endpoint needs to accept image inputs for the visual Scheduler. See the [Scheduler setup](docs/ADVISOR_COMPARISON.md) for provider-specific settings.
 
