@@ -3,6 +3,7 @@
 **Progress-Guided Adaptive Practice for Long-Horizon Robotic Manipulation Reinforcement Learning**
 
 [Project website source](https://github.com/ReFocus-Robotics/refocus.github.io) ·
+[Installation guide](docs/INSTALL.md#refocus-on-robocasa365) ·
 [Method notes](docs/REFOCUS.md) ·
 [StructRL baselines](docs/REPRODUCE.md)
 
@@ -15,7 +16,6 @@
 - [✨ Overview](#overview)
 - [⚙️ Environment setup](#environment-setup)
 - [🏋️ Training](#training)
-- [🧪 Local checks](#local-checks)
 - [📁 Repository structure](#repository-structure)
 - [📄 Attribution and license](#attribution-and-license)
 
@@ -23,24 +23,23 @@
 
 ## ✨ Overview
 
-ReFocus alternates Global and Local PPO on a shared π0.5 policy. Global PPO rewards verified subtask completions with a stage-balanced budget. A visual Scheduler uses validation rollouts and practice history to select bottleneck windows. Local PPO concentrates interaction on those windows through normal-start and snapshot-restored rollouts.
+Online reinforcement learning (RL) enables vision-language-action policies to improve through environmental interaction. However, in long-horizon manipulation, sparse success/failure feedback provides little information about where policies encounter bottlenecks. Moreover, repeated full-task rollouts also leave these bottlenecks weakly analyzed and insufficiently practiced. To this end, we introduce **ReFocus**, a progress-guided multi-round RL framework that alternates Global with Local RL to identify task-specific bottlenecks and allocate additional practice to them. Specifically, during Global RL, we decompose each task into a Directed Acyclic Graph (DAG) of subtasks. Then a DAG-based Progress Reward is leveraged for both policy training and bottleneck diagnosis. Based on the identified bottlenecks, ReFocus selects Adaptive Practice Windows, defining task segments from an entry stage to a target stage. It allocates additional interaction to these segments during Local RL while updating the entire policy. After that, it evaluates the policy to perform the full-task for the next round RL, forming an iteration between Global and Local RL.
 
-This release contains the simulation training code and launch scripts for **RoboCasa365 Composite-Seen**. Training starts from a compatible π0.5 PyTorch SFT checkpoint supplied by the user.
+Experiments on LIBERO-Long and RoboCasa365 show that ReFocus achieves success rates of 97.8% and 51.3% respectively, compared with 90.6% and 39.3% for the π<sub>0.5</sub> baseline. Furthermore, we evaluate a real-world adaptation on three long-horizon tasks. On BreadBaker, ReFocus achieves 95% success, compared with 30% for the π<sub>0.5</sub>.
 
 <a name="environment-setup"></a>
 
 ## ⚙️ Environment setup
 
-The training recipe uses two Linux x86-64 nodes with eight NVIDIA GPUs each. Set up the same Python 3.11 Conda environment on both nodes.
-
 ~~~bash
-git clone https://github.com/ReFocus-Robotics/ReFocus.git
-cd ReFocus
 conda create -n refocus --override-channels -c conda-forge python=3.11 pip ffmpeg=7
 conda activate refocus
 ~~~
 
-Follow the [RoboCasa365 installation steps](docs/INSTALL.md#refocus-on-robocasa365) to install the pinned training stack and download simulator assets. Make the checkout, run directory, and SFT checkpoint available at the same absolute paths on both nodes.
+### Data and checkpoints
+
+- [RoboCasa365 simulation assets](docs/INSTALL.md#download-simulator-assets-and-prepare-the-checkpoint) for Composite-Seen tasks.
+- A Composite-Seen π<sub>0.5</sub> PyTorch SFT checkpoint with `robocasa365/norm_stats.json`.
 
 <a name="training"></a>
 
@@ -82,19 +81,6 @@ bash scripts/run_robocasa_rsi.sh \
 ~~~
 
 The [training configuration](configs/robocasa365_ppo_openpi_pi05_refocus_16gpu.yaml) uses **256 training environments**, a **global batch of 512**, and a **microbatch of 32 per GPU**. The coordinator runs three rounds of 25 Global and 25 Local PPO updates. At each diagnostic checkpoint, it evaluates five normal-start episodes per task. Outputs are written to `$STRUCTRL_RSI_ROOT`.
-
-<a name="local-checks"></a>
-
-## 🧪 Local checks
-
-The CPU test suite and schedule preview run without Ray, simulator assets, or a checkpoint.
-
-~~~bash
-conda create -n refocus-test --override-channels -c conda-forge python=3.11 numpy pillow pytest pyyaml
-conda activate refocus-test
-python -m pytest
-python -m structrl.rsi.run --rlinf-root ./RLinf --run-root ./runs/dry-run --dry-run
-~~~
 
 <a name="repository-structure"></a>
 
