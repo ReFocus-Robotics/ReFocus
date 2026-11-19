@@ -76,34 +76,30 @@ class Tests(unittest.TestCase):
         self.assertFalse(state_equal({'ticks': 50}, {'ticks': 51}))
         self.assertFalse(state_equal({'latched': {'a': True}}, {'latched': {'a': False}}))
 
-    def test_refocus_profiles_preserve_the_eval_protocol_and_batch_consistency(self):
+    def test_refocus_profile_preserves_the_eval_protocol_and_batch_consistency(self):
         import yaml
 
         config_dir = Path(__file__).resolve().parents[1] / "configs"
         self.assertEqual(DEFAULT_RSI_CONFIG_NAME, "robocasa365_ppo_openpi_pi05_refocus_16gpu")
-        profiles = [(DEFAULT_RSI_CONFIG_NAME, 256, 512, 32),
-                    (f"{DEFAULT_RSI_CONFIG_NAME}_fast", 64, 128, 8)]
-        for name, environments, global_batch, microbatch in profiles:
-            with self.subTest(profile=name):
-                cfg = yaml.safe_load((config_dir / f"{name}.yaml").read_text())
-                self.assertEqual(cfg["cluster"]["num_nodes"], 2)
-                self.assertEqual(cfg["cluster"]["component_placement"],
-                                 {"actor": "0-15", "env,rollout": "all"})
-                self.assertEqual(cfg["env"]["train"]["total_num_envs"], environments)
-                self.assertEqual(cfg["algorithm"]["rollout_epoch"], 2)
-                self.assertEqual(cfg["actor"]["micro_batch_size"], microbatch)
-                self.assertEqual(cfg["actor"]["global_batch_size"], global_batch)
-                self.assertEqual(microbatch * 16, global_batch)
-                self.assertEqual(environments * cfg["algorithm"]["rollout_epoch"], global_batch)
-                self.assertEqual(cfg["env"]["eval"]["total_num_envs"], 80)
-                self.assertEqual(cfg["env"]["eval"]["rldx_robocasa_split"], "target")
-                self.assertTrue(cfg["env"]["eval"]["use_ordered_reset_state_ids"])
-                self.assertTrue(cfg["env"]["eval"]["auto_reset"])
-                self.assertFalse(cfg["env"]["eval"]["video_cfg"]["save_video"])
-                self.assertEqual(cfg["runner"]["val_check_interval"], 5)
-                self.assertEqual(cfg["runner"]["save_interval"], 5)
-                self.assertEqual(cfg["runner"]["max_steps"], phase_plan()[-1]["stop"])
-                self.assertEqual(cfg["runner"]["max_epochs"], cfg["runner"]["max_steps"])
+        cfg = yaml.safe_load((config_dir / f"{DEFAULT_RSI_CONFIG_NAME}.yaml").read_text())
+        self.assertEqual(cfg["cluster"]["num_nodes"], 2)
+        self.assertEqual(cfg["cluster"]["component_placement"],
+                         {"actor": "0-15", "env,rollout": "all"})
+        self.assertEqual(cfg["env"]["train"]["total_num_envs"], 256)
+        self.assertEqual(cfg["algorithm"]["rollout_epoch"], 2)
+        self.assertEqual(cfg["actor"]["micro_batch_size"], 32)
+        self.assertEqual(cfg["actor"]["global_batch_size"], 512)
+        self.assertEqual(cfg["actor"]["micro_batch_size"] * 16, 512)
+        self.assertEqual(cfg["env"]["train"]["total_num_envs"] * cfg["algorithm"]["rollout_epoch"], 512)
+        self.assertEqual(cfg["env"]["eval"]["total_num_envs"], 80)
+        self.assertEqual(cfg["env"]["eval"]["rldx_robocasa_split"], "target")
+        self.assertTrue(cfg["env"]["eval"]["use_ordered_reset_state_ids"])
+        self.assertTrue(cfg["env"]["eval"]["auto_reset"])
+        self.assertFalse(cfg["env"]["eval"]["video_cfg"]["save_video"])
+        self.assertEqual(cfg["runner"]["val_check_interval"], 5)
+        self.assertEqual(cfg["runner"]["save_interval"], 5)
+        self.assertEqual(cfg["runner"]["max_steps"], phase_plan()[-1]["stop"])
+        self.assertEqual(cfg["runner"]["max_epochs"], cfg["runner"]["max_steps"])
 
     def test_fast_16gpu_profile_keeps_microbatch_and_has_consistent_actor_batch(self):
         import yaml

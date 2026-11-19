@@ -36,14 +36,11 @@ This repository provides the training code, configuration, and launch scripts fo
 
 ## Training
 
-| Profile | Training envs | Global batch | Microbatch per actor GPU |
-| --- | ---: | ---: | ---: |
-| [Paper-size](configs/robocasa365_ppo_openpi_pi05_refocus_16gpu.yaml), default | 256 | 512 | 32 |
-| [Fast](configs/robocasa365_ppo_openpi_pi05_refocus_16gpu_fast.yaml) | 64 | 128 | 8 |
-
-Both profiles use two nodes with eight actor GPUs each. The coordinator runs
-three rounds of 25 Global and 25 Local PPO updates. It evaluates five
-normal-start episodes per task at each diagnostic checkpoint.
+The [RoboCasa365 training configuration](configs/robocasa365_ppo_openpi_pi05_refocus_16gpu.yaml)
+uses 256 parallel training environments on two nodes with eight actor GPUs
+each. The global batch is 512, with a microbatch of 32 per GPU. The
+coordinator runs three rounds of 25 Global and 25 Local PPO updates and
+evaluates five normal-start episodes per task at each diagnostic checkpoint.
 
 Set `ADVISOR_API_KEY` on the coordinator after starting Ray. The visual
 Scheduler sends evaluation montages to the configured endpoint, which must
@@ -56,10 +53,8 @@ scripts/run_robocasa_rsi.sh \
   --advisor-base-url "$ADVISOR_BASE_URL" --advisor-model "$ADVISOR_MODEL"
 ```
 
-Pass `--config-name robocasa365_ppo_openpi_pi05_refocus_16gpu_fast` to select the
-fast profile and give it a separate run directory. See [Scheduler
-configuration](docs/ADVISOR_COMPARISON.md) for provider-specific settings.
-The [method notes](docs/REFOCUS.md) describe rollout modes, snapshot
+See [Scheduler configuration](docs/ADVISOR_COMPARISON.md) for provider-specific
+settings. The [method notes](docs/REFOCUS.md) describe rollout modes, snapshot
 restoration, and the optional milestone configuration.
 
 ## Local checks
