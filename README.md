@@ -1,11 +1,13 @@
-# ReFocus
+<h1 align="center">ReFocus</h1>
 
-**Progress-Guided Adaptive Practice for Long-Horizon Robotic Manipulation Reinforcement Learning**
+<p align="center"><strong>Progress-Guided Adaptive Practice for Long-Horizon Robotic Manipulation Reinforcement Learning</strong></p>
 
-[![arXiv Paper](https://img.shields.io/badge/arXiv-Paper-b31b1b?logo=arxiv&logoColor=white)](https://github.com/ReFocus-Robotics/ReFocus)
-[![Project Website](https://img.shields.io/badge/Project-Website-0077b5)](https://github.com/ReFocus-Robotics/ReFocus)
-[![License CC BY-NC 4.0](https://img.shields.io/badge/License-CC_BY--NC_4.0-green)](LICENSE)
-[![Python 3.11](https://img.shields.io/badge/Python-3.11-3776ab?logo=python&logoColor=white)](#environment-setup)
+<p align="center">
+  <a href="https://github.com/ReFocus-Robotics/ReFocus"><img src="https://img.shields.io/badge/arXiv-Paper-b31b1b?logo=arxiv&amp;logoColor=white" alt="arXiv Paper"></a>
+  <a href="https://github.com/ReFocus-Robotics/ReFocus"><img src="https://img.shields.io/badge/Project-Website-0077b5" alt="Project Website"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-CC_BY--NC_4.0-green" alt="License CC BY-NC 4.0"></a>
+  <a href="#environment-setup"><img src="https://img.shields.io/badge/Python-3.11-3776ab?logo=python&amp;logoColor=white" alt="Python 3.11"></a>
+</p>
 
 <p align="center">
   <img src="docs/assets/refocus-overview.png" alt="ReFocus alternates full-task training and targeted practice using subtask progress and practice history." width="860">
@@ -39,12 +41,14 @@ conda activate refocus
 
 ### Data and checkpoints
 
-- [RoboCasa365 simulation assets](docs/INSTALL.md#download-simulator-assets-and-prepare-the-checkpoint) for Composite-Seen tasks.
-- A Composite-Seen π<sub>0.5</sub> PyTorch SFT checkpoint with `robocasa365/norm_stats.json`.
+- **RoboCasa365 Composite-Seen.** Prepare the [simulation assets](docs/INSTALL.md#download-simulator-assets-and-prepare-the-checkpoint) and a Composite-Seen π<sub>0.5</sub> PyTorch SFT checkpoint with `robocasa365/norm_stats.json`.
+- **LIBERO-Long.** Prepare the [LIBERO simulator assets and benchmark initial states](https://github.com/RLinf/LIBERO) and the [RLinf π<sub>0.5</sub> LIBERO SFT checkpoint](https://huggingface.co/RLinf/RLinf-Pi05-LIBERO-130-fullshot-SFT).
 
 <a name="training"></a>
 
 ## 🏋️ Training
+
+The launcher below runs ReFocus on RoboCasa365 Composite-Seen.
 
 ### 1. Configure both Ray nodes
 
