@@ -7,9 +7,9 @@ from pathlib import Path
 import subprocess
 import sys
 import uuid
+from refocus.robocasa import TASK_STAGES
 from .protocol import phase_plan, write_json
 from .advisor import select, _provider_settings, read_key
-from .reward import validate_refinements
 from .snapshot import ENTRY_SNAPSHOT_VERSION
 
 DEFAULT_RSI_CONFIG_NAME = 'robocasa365_ppo_openpi_pi05_refocus_16gpu'
@@ -33,7 +33,6 @@ def main():
     p.add_argument('--local-mix', nargs=3, type=float, default=[.5, .25, .25],
                    metavar=('WINDOW', 'SUFFIX', 'PREFIX'),
                    help='Rollout probabilities. The StructRL baseline uses normal starts in slot three.')
-    p.add_argument('--refinements', type=Path, help='Reviewed simulator-backed milestone config')
     p.add_argument('--hydra-override',action='append',default=[])
     p.add_argument('--advisor-provider',choices=('openai-compatible','anthropic'),default='openai-compatible')
     p.add_argument('--advisor-base-url','--astra-base-url',dest='advisor_base_url',default=None)
@@ -66,7 +65,7 @@ def main():
     read_key(args.advisor_provider)
     if args.advisor_max_tokens < 1:
         raise ValueError('advisor-max-tokens must be positive')
-    if not (runtime/'.structrl_rsi_hooks_v3').exists():
+    if not (runtime/'.structrl_rsi_hooks_v4').exists():
         raise RuntimeError('Install hooks in an isolated RLinf runtime first')
     # All Ray workers must inherit these variables before cluster startup.
     if os.environ.get('STRUCTRL_RSI_ROOT')!=str(root):
@@ -74,8 +73,6 @@ def main():
     variant = os.environ.get('STRUCTRL_REWARD_VARIANT')
     if variant not in ('refocus', 'structrl'):
         raise RuntimeError('Set STRUCTRL_REWARD_VARIANT to refocus or structrl before Ray startup')
-    if args.refinements and variant != 'refocus':
-        raise ValueError('Milestone refinements require the ReFocus reward')
     import yaml
     config_dir=Path(args.config_path).resolve()
     tasks=yaml.safe_load((config_dir/'env/robocasa365_composite_seen.yaml').read_text())['task_names']
@@ -84,16 +81,18 @@ def main():
         if unknown: raise ValueError('Unknown RoboCasa tasks: '+', '.join(sorted(unknown)))
         tasks=args.tasks
         if not tasks: raise ValueError('At least one task is required')
-    refinements = validate_refinements(
-        json.loads(args.refinements.read_text()) if args.refinements else {}, tasks
-    )
-    release_config = dict(reward_variant=variant, refinements=refinements, tasks=tasks,
+    release_config = dict(reward_variant=variant, tasks=tasks,
                           entry_snapshot_version=ENTRY_SNAPSHOT_VERSION,
                           local_mix=args.local_mix, horizon=args.horizon, phases=plan,
                           eval_interval=args.eval_interval, save_interval=args.save_interval,
                           train_envs=args.train_envs, eval_envs=args.eval_envs,
                           config_path=str(config_dir), config_name=args.config_name,
                           hydra_overrides=args.hydra_override)
+    if variant == 'refocus':
+        release_config['milestone_source'] = 'scheduler'
+        release_config['task_stages'] = {task: [list(stage) for stage in TASK_STAGES[task]] for task in tasks}
+    else:
+        release_config['refinements'] = {}
     release_config_path = root / 'release_config.json'
     if release_config_path.exists():
         previous_config = json.loads(release_config_path.read_text())
@@ -146,7 +145,7 @@ def main():
         write_json(root/'control.json',dict(phase,phase_attempt_id=phase_attempt_id,
             update=phase['start'],windows=windows,entry_attempt_id=global_attempt_id,
             chunk=50,horizon=args.horizon,local_mix=args.local_mix,
-            reward_variant=variant, refinements=refinements if phase['mode']=='local' else {}))
+            reward_variant=variant))
         phase_dir.mkdir(parents=True,exist_ok=True)
         cmd=[sys.executable,str(runtime/'examples/embodiment/train_embodied_agent.py'),
              '--config-path',str(config_dir),'--config-name',args.config_name,

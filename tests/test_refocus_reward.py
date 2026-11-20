@@ -1,10 +1,12 @@
-import json
-from pathlib import Path
+import sys
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
 from refocus.reward import StageBalancedReward
-from structrl.rsi.reward import build_robocasa_reward, validate_refinements
+from refocus.robocasa import get_subtask_states
+from structrl.rsi.reward import build_robocasa_reward, milestone_signals, validate_refinement
 
 
 def advance(reward, *subtasks, success=False, signals=None):
@@ -15,14 +17,15 @@ def advance(reward, *subtasks, success=False, signals=None):
 def test_stage_budget_and_first_valid_completion():
     reward = build_robocasa_reward("StoreLeftoversInBowl")
     assert advance(reward, "bowl_in_fridge")["r_total"] == 0
-    assert advance(reward, "vegetable_in_bowl")["r_total"] == 0.5
+    assert advance(reward, "vegetable_in_bowl")["r_total"] == pytest.approx(1 / 3)
     assert advance(reward, "vegetable_in_bowl")["r_total"] == 0
     # The fridge predicate cannot be credited in the evaluation that unlocks it.
-    assert advance(reward, "chicken_in_bowl", "bowl_in_fridge")["r_total"] == 0.5
+    assert advance(reward, "chicken_in_bowl", "grasp_bowl")["r_total"] == pytest.approx(1 / 3)
     assert reward.stage_idx == 1
-    assert advance(reward, "bowl_in_fridge", success=True)["r_total"] == 3
+    assert advance(reward, "grasp_bowl")["r_total"] == pytest.approx(2 / 3)
+    assert advance(reward, "bowl_in_fridge", success=True)["r_total"] == pytest.approx(2 + 2 / 3)
     assert advance(reward, "bowl_in_fridge", success=True)["r_total"] == 0
-    assert reward.cumulative_progress == 2
+    assert reward.cumulative_progress == pytest.approx(2)
     assert reward.cumulative_outcome == 2
 
 
@@ -60,9 +63,92 @@ def test_milestones_stay_gated_by_the_target_prerequisites():
     assert advance(reward, "target", signals={"grasp": True})["r_total"] == 0.5
 
 
-def test_refinement_config_accepts_only_bundled_checks():
-    config = json.loads(Path("examples/robocasa365/milestone_refinements.json").read_text())
-    assert validate_refinements(config, ["StoreLeftoversInBowl"]) == config
-    config["StoreLeftoversInBowl"]["shares"]["arbitrary_llm_expression"] = 0
-    with pytest.raises(ValueError, match="Invalid target or milestone"):
-        validate_refinements(config, ["StoreLeftoversInBowl"])
+@pytest.mark.parametrize("first_stage, expected_progress", [
+    (["prep"], 2.0),
+    (["prep", "missing"], 0.5),
+])
+def test_success_settles_only_observed_and_eligible_stages(first_stage, expected_progress):
+    reward = StageBalancedReward([first_stage, ["target"]])
+    report = advance(reward, "prep", "target", success=True)
+    assert report["r_event"] == expected_progress
+    assert report["r_outcome"] == 2.0
+    assert advance(reward, "target", success=True)["r_total"] == 0
+
+
+def test_terminal_settlement_honors_milestone_shares():
+    reward = StageBalancedReward([["prep"], ["target"]])
+    reward.configure_window(0, 1, "target", {"grasp": 0.3, "target": 0.7}, {"grasp": False})
+    report = advance(reward, "prep", "target", success=True, signals={"grasp": True})
+    assert report["stage_idx_after"] == 2
+    assert report["r_event"] == pytest.approx(2.0)
+    assert reward.milestones_paid == {"grasp", "target"}
+
+
+@pytest.mark.parametrize("edits, error", [
+    ({"check": "unknown"}, "Unsupported"),
+    ({"object": "missing"}, "Unknown milestone object"),
+    ({"reference": "missing"}, "Invalid milestone reference"),
+    ({"share": True}, "Milestone share"),
+    ({"share": 0.4}, "sum to one"),
+])
+def test_rejects_unverified_milestone_output(edits, error):
+    config = dict(target="place", final_share=0.5, milestones=[
+        dict(name="pick", check="object_grasped", object="item", reference=None, share=0.5),
+    ])
+    config["milestones"][0].update(edits)
+    with pytest.raises(ValueError, match=error):
+        validate_refinement(config, ["place"], {"objects": ["item"], "fixtures": []})
+
+
+def test_milestone_signals_bind_to_named_simulator_entities(monkeypatch):
+    object_utils = SimpleNamespace(
+        check_obj_grasped=Mock(return_value=True),
+        check_obj_in_receptacle=Mock(return_value=False),
+        obj_inside_of=Mock(return_value=True),
+    )
+    monkeypatch.setitem(sys.modules, "robocasa.utils", SimpleNamespace(object_utils=object_utils))
+    fixture = object()
+    env = SimpleNamespace(fixtures={"fixture": fixture})
+    checks = [
+        dict(name="pick", check="object_grasped", object="item", reference=None, share=0.25),
+        dict(name="insert", check="object_in_receptacle", object="item", reference="tray", share=0.25),
+        dict(name="store", check="object_inside_fixture", object="tray", reference="fixture", share=0.25),
+    ]
+    entities = {"objects": ["item", "tray"], "fixtures": ["fixture"]}
+    assert validate_refinement(dict(target="place", milestones=checks, final_share=0.25),
+                               ["place"], entities)
+    assert milestone_signals(env, checks) == {"pick": True, "insert": False, "store": True}
+    object_utils.check_obj_grasped.assert_called_once_with(env, "item")
+    object_utils.check_obj_in_receptacle.assert_called_once_with(env, "item", "tray")
+    object_utils.obj_inside_of.assert_called_once_with(env, "tray", fixture, partial_check=False)
+
+
+def test_appendix_predicates_use_simulator_checks_and_native_completion(monkeypatch):
+    object_utils = SimpleNamespace(
+        check_obj_grasped=Mock(return_value=False),
+        check_obj_in_receptacle=Mock(side_effect=lambda env, obj, ref: (obj, ref) == ("meat0", "tupperware1")),
+    )
+    monkeypatch.setitem(sys.modules, "robocasa.utils", SimpleNamespace(object_utils=object_utils))
+    monkeypatch.setitem(sys.modules, "structrl.subtask_checker", SimpleNamespace(
+        get_subtask_states=lambda env: {"progress": {"bowl_in_fridge": True, "task_complete": False}},
+    ))
+    fridge = type("StoreLeftoversInBowl", (), {})()
+    assert get_subtask_states(fridge)["progress"]["grasp_bowl"] is False
+    object_utils.check_obj_grasped.assert_called_once_with(fridge, "bowl")
+
+    lunches = type("PackIdenticalLunches", (), {})()
+    assert get_subtask_states(lunches)["progress"] == {
+        "vegetable0_packed": False, "vegetable1_packed": False, "meat0_packed": True, "meat1_packed": False,
+    }
+
+    wash = type("WashLettuce", (), {})()
+    wash.washed_time = 10
+    wash.sink = SimpleNamespace(check_obj_under_water=Mock(return_value=True))
+    progress = get_subtask_states(wash)["progress"]
+    assert progress["lettuce_under_water"] and progress["wash_t10"]
+    assert not progress["task_complete"]
+
+    stir = type("StirVegetables", (), {})()
+    stir.success_time = 1
+    progress = get_subtask_states(stir)["progress"]
+    assert progress["stir_t1"] and not progress["task_complete"]

@@ -3,12 +3,24 @@
 The source repository and baseline launchers remain unchanged. No GPU needed.
 """
 import argparse
+import os
 from pathlib import Path
 
 
 def once(s, old, new):
     if s.count(old)!=1: raise ValueError('Unsupported runtime anchor: '+old[:100])
     return s.replace(old,new,1)
+
+
+def route_progress_checks(source, indent):
+    grouped = '''if _reward_variant == "refocus":
+    from refocus.robocasa import get_subtask_states as get_refocus_subtask_states
+    grouped = get_refocus_subtask_states(inner)
+else:
+    grouped = get_subtask_states(inner)
+'''
+    return once(source, '\n' + indent + 'grouped = get_subtask_states(inner)\n',
+                '\n' + ''.join(indent + line + '\n' for line in grouped.splitlines()))
 
 
 def transform_worker(s):
@@ -19,11 +31,12 @@ def transform_worker(s):
     # Strict RSI reward errors; original non-RSI fallback remains intact.
     body=body.replace('    except Exception as _e:\n',
         '    except Exception as _e:\n        if os.environ.get("STRUCTRL_RSI_ROOT"):\n            raise\n')
+    body = route_progress_checks(body, ' ' * 8)
     body = once(body, '\n        tinfo = timing_reward.step(grouped, success, sim_t=sim_t)\n', '''
         if getattr(timing_reward, "refined_target", None) is not None:
             from structrl.rsi.reward import milestone_signals
             tinfo = timing_reward.step(grouped, success, sim_t=sim_t,
-                                       signals=milestone_signals(inner))
+                                       signals=milestone_signals(inner, timing_reward.milestone_checks))
         else:
             tinfo = timing_reward.step(grouped, success, sim_t=sim_t)
 ''')
@@ -68,7 +81,8 @@ def transform_worker(s):
 
 def install(root):
     root=Path(root)
-    marker=root/'.structrl_rsi_hooks_v3'
+    marker=root/'.structrl_rsi_hooks_v4'
+    previous_marker=root/'.structrl_rsi_hooks_v3'
     if marker.exists() or (root / '.structrl_rsi_hooks_v2').exists():
         raise ValueError('Already patched; use a fresh isolated runtime')
     paths={
@@ -77,6 +91,23 @@ def install(root):
       'base':root/'rlinf/envs/robocasa/robocasa_env.py',
       'runner':root/'rlinf/runners/embodied_runner.py',
       'bootstrap':root/'rlinf/workers/env/env_worker.py'}
+    if previous_marker.exists():
+        worker = paths['worker']
+        old = 'signals=milestone_signals(inner))'
+        new = 'signals=milestone_signals(inner, timing_reward.milestone_checks))'
+        source = worker.read_text()
+        if new not in source or 'get_refocus_subtask_states' not in source:
+            if new not in source:
+                source = once(source, old, new)
+            if 'get_refocus_subtask_states' not in source:
+                source = route_progress_checks(source, ' ' * 12)
+            compile(source, str(worker), 'exec')
+            staged = worker.with_suffix('.py.refocus-tmp')
+            staged.write_text(source)
+            os.replace(staged, worker)
+        marker.write_text('v4\n')
+        previous_marker.unlink()
+        return
     outputs={};outputs['worker']=transform_worker(paths['worker'].read_text())
     s=paths['env'].read_text()
     s=once(s,'    def get_env_fns(self):\n        env_fns = []',
@@ -124,7 +155,7 @@ def install(root):
     # Validate everything before mutating any file.
     for k,s in outputs.items():compile(s,str(paths[k]),'exec')
     for k,s in outputs.items():paths[k].write_text(s)
-    marker.write_text('v3\n')
+    marker.write_text('v4\n')
 
 if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('isolated_rlinf_root')

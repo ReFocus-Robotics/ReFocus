@@ -9,10 +9,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 import numpy as np
+from refocus.reward import StageBalancedReward
 from structrl.rsi.protocol import phase_plan, validate_windows, write_json
 from structrl.rsi.recorder import Recorder, state_equal, canonical_scene_xml
 from structrl.rsi.run import DEFAULT_RSI_CONFIG_NAME
-from structrl.rsi.advisor import _checker_evidence, _history_for_task, diagnostics, select
+from structrl.rsi.advisor import _checker_evidence, _history_for_task, _save_selection, diagnostics, select
 from structrl.rsi.visual_feedback import build_montage, encode_snapshot, observation_views, should_capture
 from scripts.install_rsi_hooks import transform_worker
 
@@ -173,7 +174,8 @@ class Tests(unittest.TestCase):
         opener=Mock();opener.open.side_effect=[
             response({'task':'Toy','visible_progress':'reaches the first subtask',
                       'recurring_stall_stage':1,'evidence':['episode images'],'uncertainty':'limited sample'}),
-            response({'windows':{'Toy':{'start_stage':0,'end_stage':0,'max_steps':100,'reason':'repeated stall'}}})]
+            response({'windows':{'Toy':{'start_stage':0,'end_stage':0,'max_steps':100,
+                                        'reason':'repeated stall','milestone_refinement':None}}})]
         with patch.dict(os.environ,{'OPENAI_API_KEY':'test-secret'}), \
              patch('structrl.rsi.advisor.urllib.request.build_opener',return_value=opener), \
              patch('structrl.rsi.advisor.time.sleep'):
@@ -303,17 +305,19 @@ class Tests(unittest.TestCase):
         for episode in range(5):
             write_json(self.root/'traces'/f'eval_{episode}.json',dict(
                 task='Toy',mode='eval',round=0,update=5,complete=True,
-                success=False,stage=0,stages=[['a'],['b']],stage_signature='schema'))
+                success=False,stage=0,stages=[['a'],['b'],['c']],stage_signature='schema',
+                milestone_entities={'objects':['item'],'fixtures':[]}))
         folder=self.root/'entries/0/Toy/0';folder.mkdir(parents=True)
         (folder/'entry.pkl').write_bytes(b'test-entry')
         response=Mock()
         response.__enter__=Mock(return_value=response)
         response.__exit__=Mock(return_value=False)
+        refinement = dict(target='b', final_share=0.75, milestones=[
+            dict(name='pick', check='object_grasped', object='item', reference=None, share=0.25),
+        ])
         response.read=Mock(return_value=json.dumps({'choices':[{'message':{'content':json.dumps({
             'windows':{'Toy':dict(start_stage=0,end_stage=1,max_steps=50,reason='recurring failure',
-                milestones=[dict(name='lift',completion_condition='object held above surface',
-                    required_simulator_signals=['object height','grasp state'],
-                    source_evidence='no checker provided',missing_information='signals and threshold')])}})}}]}).encode())
+                milestone_refinement=refinement)}})}}]}).encode())
         opener=Mock();opener.open.return_value=response
         with patch.dict(os.environ,{'OPENAI_API_KEY':'test-secret'}), patch(
                 'structrl.rsi.advisor.urllib.request.build_opener',return_value=opener):
@@ -325,14 +329,47 @@ class Tests(unittest.TestCase):
         self.assertEqual(payload['model'],'gpt-6-astra')
         self.assertEqual(payload['reasoning_effort'],'low')
         self.assertEqual(windows['Toy']['start_stage'],0)
-        self.assertNotIn('milestones',windows['Toy'])
+        self.assertEqual(windows['Toy']['milestone_refinement'], refinement)
         proposal=json.loads((self.root/'milestone_proposals_round0.json').read_text())['Toy']
-        self.assertEqual(proposal['status'],'proposed_not_validated')
-        self.assertEqual(proposal['milestones'][0]['name'],'lift')
+        self.assertEqual(proposal['status'], 'accepted')
+        self.assertEqual(proposal['proposal'], refinement)
         self.assertIn('restored entry state',payload['messages'][0]['content'][0]['text'])
         self.assertNotIn('test-secret',(self.root/'advisor_request_round0.json').read_text())
         self.assertNotIn('test-secret',(self.root/'advisor_response_round0.json').read_text())
         self.assertEqual(payload['response_format']['type'],'json_schema')
+
+        # The selected window is handed to the worker through control.json.
+        windows['Toy'].pop('stage_signature')  # Synthetic trace signature.
+        write_json(self.root/'control.json', dict(mode='local', round=0, update=25,
+                   windows=windows, local_mix=[0, 0, 1], reward_variant='refocus'))
+        env = Toy(self.root)
+        env.objects = {'item': object()}
+        env.rw = StageBalancedReward([['a'], ['b'], ['c']])
+        with patch.dict(os.environ, {'STRUCTRL_REWARD_VARIANT':'refocus'}), patch(
+                'structrl.rsi.recorder.milestone_signals', return_value={'pick': False}) as read_signals:
+            recorder = Recorder(env, env.reset, env.step, lambda: env.rw)
+            recorder.reset({})
+            self.assertTrue(recorder.refined)
+            read_signals.assert_called_once_with(env, refinement['milestones'])
+            env.rw.step({'progress': {'a': True}}, False, signals={'pick': False})
+            report = env.rw.step({'progress': {}}, False, signals={'pick': True})
+            self.assertAlmostEqual(report['r_event'], (2 / 3) * 0.25)
+
+            env.objects = {}
+            env.rw.reset()
+            recorder.reset({})
+            self.assertFalse(recorder.refined)
+            self.assertEqual(recorder.milestone_fallback, 'Unknown milestone object')
+
+    def test_rejected_scheduler_refinement_keeps_valid_window(self):
+        candidates = {'Toy': dict(available_starts=[0], stages=[['a']],
+                                  milestone_entities={'objects':[], 'fixtures':[]})}
+        window = dict(start_stage=0, end_stage=0, max_steps=50, reason='repeated stall')
+        response = {'windows': {'Toy': dict(window, milestone_refinement={'target':'a'})}}
+        self.assertEqual(_save_selection(self.root, 0, 'test-advisor', response, candidates),
+                         {'Toy': window})
+        proposal = json.loads((self.root/'milestone_proposals_round0.json').read_text())['Toy']
+        self.assertEqual(proposal['status'], 'rejected')
 
     def test_checker_evidence_is_task_specific_and_missing_is_explicit(self):
         checker = _checker_evidence('StoreLeftoversInBowl')

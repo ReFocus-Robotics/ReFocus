@@ -11,7 +11,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 import numpy as np
 from .protocol import entry_pattern, write_json
-from .reward import milestone_signals
+from .reward import milestone_entities, milestone_signals, validate_refinement
 from . import snapshot
 from .visual_feedback import (encode_snapshot, extract_instruction,
                               save_episode_montage, should_capture)
@@ -149,6 +149,7 @@ class Recorder:
         self.phase_attempt_id = self.control.get('phase_attempt_id')
         self.entry_attempt_id = self.control.get('entry_attempt_id')
         self.refined = False
+        self.milestone_fallback = None
         self.closed = False
         self.entries = {}
         self.steps = 0
@@ -206,14 +207,20 @@ class Recorder:
             raise RuntimeError('Window or entry stage schema differs from the current task')
         if self.visual_enabled:
             self._capture_visual(obs, 0, int(rw.stage_idx))
-        refinement = self.control.get('refinements', {}).get(self.task)
-        if self.local and refinement:
-            rw = self.reward()
-            stage = rw.stages[window['end_stage']]
-            if refinement['target'] in stage:
+        refinement = window.get('milestone_refinement') if self.local and variant == 'refocus' else None
+        if refinement is not None:
+            inner = leaf(self.env)
+            try:
+                validate_refinement(refinement, rw.stages[window['end_stage']], milestone_entities(inner))
+            except ValueError as exc:
+                self.milestone_fallback = str(exc)
+            else:
+                target = refinement['target']
+                checks = refinement['milestones']
+                shares = {item['name']: item['share'] for item in checks}
+                shares[target] = refinement['final_share']
                 rw.configure_window(window['start_stage'], window['end_stage'],
-                                    refinement['target'], refinement['shares'],
-                                    milestone_signals(leaf(self.env)))
+                                    target, shares, milestone_signals(inner, checks), checks=checks)
                 self.refined = rw.refined_target is not None
         self.active = True
         return obs, info
@@ -277,6 +284,10 @@ class Recorder:
                  remaining_horizon=self.remaining,entry_update=self.entry_update,
                  window_complete=bool(self.local and rw.stage_idx>self.window['end_stage']),
                  reward_scope='milestone_refinement' if self.refined else 'original_task')
+        if self.eval:
+            row['milestone_entities'] = milestone_entities(leaf(self.env))
+        if self.milestone_fallback is not None:
+            row['milestone_fallback'] = self.milestone_fallback
         if self.phase_attempt_id is not None:
             row['phase_attempt_id']=self.phase_attempt_id
         if self.visual_enabled and self.visual_snapshots:

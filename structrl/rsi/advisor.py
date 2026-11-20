@@ -10,6 +10,7 @@ import urllib.request
 from pathlib import Path
 
 from .protocol import entry_pattern, validate_windows, write_json
+from .reward import MILESTONE_CHECKS, validate_refinement
 from .visual_feedback import image_cases
 
 
@@ -88,8 +89,12 @@ def diagnostics(root, round_id, checkpoints, phase_attempt_id=None):
         if len(signatures) != 1:
             raise ValueError('Inconsistent stage schema for ' + task)
         if starts and any(not row['success'] for row in records):
+            entities = {kind: sorted(set.intersection(*(
+                set(row.get('milestone_entities', {}).get(kind, [])) for row in records
+            ))) for kind in ('objects', 'fixtures')}
             candidates[task] = dict(available_starts=starts, stages=records[-1]['stages'],
                 stage_signature=records[-1]['stage_signature'],
+                milestone_entities=entities,
                 evaluations=[{key: row[key] for key in ('update', 'success', 'stage')} for row in records])
     return candidates
 
@@ -97,7 +102,8 @@ def diagnostics(root, round_id, checkpoints, phase_attempt_id=None):
 def _public_candidates(candidates):
     """Project only model-facing evidence; stage hashes stay internal."""
     return {task: {key: candidate[key] for key in
-            ('available_starts', 'stages', 'evaluations')} for task, candidate in candidates.items()}
+            ('available_starts', 'stages', 'evaluations', 'milestone_entities')}
+            for task, candidate in candidates.items()}
 
 
 def _checker_evidence(task):
@@ -122,17 +128,21 @@ def _checker_evidence(task):
 def _selection_schema(candidates):
     milestone = {'type': 'object', 'properties': {
         'name': {'type': 'string'},
-        'completion_condition': {'type': 'string'},
-        'required_simulator_signals': {'type': 'array', 'items': {'type': 'string'}},
-        'source_evidence': {'type': 'string'},
-        'missing_information': {'type': 'string'}},
-        'required': ['name', 'completion_condition', 'required_simulator_signals',
-                     'source_evidence', 'missing_information'], 'additionalProperties': False}
+        'check': {'type': 'string', 'enum': list(MILESTONE_CHECKS)},
+        'object': {'type': 'string'},
+        'reference': {'type': ['string', 'null']},
+        'share': {'type': 'number'}},
+        'required': ['name', 'check', 'object', 'reference', 'share'], 'additionalProperties': False}
+    refinement = {'type': ['object', 'null'], 'properties': {
+        'target': {'type': 'string'},
+        'milestones': {'type': 'array', 'items': milestone},
+        'final_share': {'type': 'number'}},
+        'required': ['target', 'milestones', 'final_share'], 'additionalProperties': False}
     window = {'type': 'object', 'properties': {
         'start_stage': {'type': 'integer'}, 'end_stage': {'type': 'integer'},
         'max_steps': {'type': 'integer'}, 'reason': {'type': 'string'},
-        'milestones': {'type': 'array', 'items': milestone}},
-        'required': ['start_stage', 'end_stage', 'max_steps', 'reason', 'milestones'],
+        'milestone_refinement': refinement},
+        'required': ['start_stage', 'end_stage', 'max_steps', 'reason', 'milestone_refinement'],
         'additionalProperties': False}
     return _schema('robo_local_window_selection', {
         'windows': {'type': 'object', 'properties': {task: window for task in candidates},
@@ -140,32 +150,41 @@ def _selection_schema(candidates):
 
 
 _MILESTONE_INSTRUCTIONS = (
-    ' For each selected window, also propose up to three fine-grained milestones within its '
-    'target subtask, with names, completion conditions, required simulator signals, '
-    'source evidence and missing information. Use the supplied task checker and stage '
-    'definitions as evidence, not proof that a new milestone is implemented. Refer to exact '
-    'existing signal or function names only when shown in the input; otherwise describe the '
-    'required observable conceptually and identify the missing implementation. Never invent '
-    'API names, thresholds, reward weights, or treat missing evidence as failure. '
-    'A proposed milestone reward is a one-time event on a new valid completion, not a '
-    'recurring reward while a condition remains true; account for the restored entry state '
-    'and do not award milestones already satisfied on restore. A verified refinement may '
-    'apply in the target stage of Normal, Prefix, and Suffix Windows. Its milestones share '
-    'the original target subtask budget, and the final milestone uses its original condition. '
-    'Output proposals for review only.'
+    ' For each selected window, set milestone_refinement to null unless the evidence '
+    'supports refining one of the subtasks in end_stage. If it does, name that exact '
+    'subtask as target and specify one to three distinct intermediate milestones with '
+    'checks from supported_milestone_checks and exact names from that task\'s milestone_entities. '
+    'Choose meaningful intermediate steps toward the target. Avoid duplicating any DAG '
+    'subtask or a condition already satisfied in the restored entry state. '
+    'Use restored entry state as context: already-satisfied checks earn no reward at reset. '
+    'The final milestone uses the original target predicate and only needs final_share. '
+    'Choose positive shares (equal by default) including final_share that sum to one; '
+    'these divide the original target reward budget. Explain the evidence in reason. '
+    'Use null if the available simulator checks cannot express a meaningful refinement.'
 )
 
 
 def _save_selection(output_root, round_id, model, response, candidates):
     proposed = response['windows']
-    windows = {task: {key: value for key, value in window.items() if key != 'milestones'}
-               for task, window in proposed.items()}
-    validate_windows(windows, candidates)
-    proposals = {task: {'window': windows[task], 'milestones': window.get('milestones', []),
-                        'status': 'proposed_not_validated'}
-                 for task, window in proposed.items()}
+    validate_windows(proposed, candidates)
+    windows = {}
+    proposals = {}
+    for task, proposal in proposed.items():
+        window = {key: proposal[key] for key in ('start_stage', 'end_stage', 'max_steps', 'reason')}
+        refinement = proposal.get('milestone_refinement')
+        result = {'proposal': refinement, 'status': 'no_refinement'}
+        if refinement is not None:
+            candidate = candidates[task]
+            try:
+                window['milestone_refinement'] = validate_refinement(
+                    refinement, candidate['stages'][window['end_stage']], candidate['milestone_entities'])
+                result['status'] = 'accepted'
+            except ValueError as exc:
+                result.update(status='rejected', reason=str(exc))
+        windows[task] = window
+        proposals[task] = result
     write_json(output_root / f'advisor_response_round{round_id}.json',
-               {'model': model, 'windows': windows, 'milestone_proposals': proposals})
+               {'model': model, 'windows': proposed})
     write_json(output_root / f'milestone_proposals_round{round_id}.json', proposals)
     return windows
 
@@ -375,8 +394,8 @@ def _task_prompt(task, records, stages, case_ids, instruction, history):
     }
     return (
         'You are a visual robotics RL analyst. We are training one shared pi0.5 policy '
-        'for RoboCasa365 Composite-Seen with StructRL rewards. This is a development diagnostic '
-        'for the Global phase of RSI Version C, not a final benchmark. Inspect the attached 4x4 '
+        'for RoboCasa365 Composite-Seen. Diagnose bottlenecks using normal-start validation '
+        'rollouts from Global RL. Inspect the attached 4x4 '
         'timeline montages. Each timeline cell is a 2x2 camera panel labeled agentview_left, '
         'agentview_right, wrist, or Not recorded; its caption gives the control step and task stage. '
         'The episode outcome is explicitly labeled SUCCESS or FAILURE in the montage. Do not infer '
@@ -473,6 +492,7 @@ def select_visual(root, round_id, checkpoints, *, base_url=None, model=None, rea
             + _MILESTONE_INSTRUCTIONS + '\n'
             + json.dumps({'eligible_tasks': eligible_for_prompt, 'visual_diagnoses': task_diagnoses,
                           'practice_history': {task: histories[task] for task in candidates},
+                          'supported_milestone_checks': MILESTONE_CHECKS,
                           'existing_task_checkers': {task: _checker_evidence(task) for task in candidates}},
                          ensure_ascii=False)
         )
@@ -512,6 +532,7 @@ def select_text(root, round_id, checkpoints, *, base_url=None, model=None, reaso
                   + _MILESTONE_INSTRUCTIONS + '\n'
                   + json.dumps({'eligible_tasks': _public_candidates(candidates),
                                 'practice_history': histories,
+                                'supported_milestone_checks': MILESTONE_CHECKS,
                                 'existing_task_checkers': {task: _checker_evidence(task) for task in candidates}},
                                ensure_ascii=False))
         selection_schema = _selection_schema(candidates)

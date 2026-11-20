@@ -94,6 +94,8 @@ bash scripts/run_robocasa_rsi.sh \
 
 The [training configuration](configs/robocasa365_ppo_openpi_pi05_refocus_16gpu.yaml) uses **256 training environments**, a **global batch of 512**, and a **microbatch of 32 per GPU**. The coordinator runs three rounds of 25 Global and 25 Local PPO updates. At each diagnostic checkpoint, it evaluates five normal-start episodes per task. Outputs are written to `$STRUCTRL_RSI_ROOT`.
 
+The Scheduler can return simulator-checkable milestones with each practice window. Local RL applies valid refinements automatically. See the [Scheduler milestone interface](docs/REFOCUS.md#scheduler-milestone-interface).
+
 <a name="repository-structure"></a>
 
 ## 📁 Repository structure
@@ -104,7 +106,7 @@ The [training configuration](configs/robocasa365_ppo_openpi_pi05_refocus_16gpu.y
 | [`structrl/rsi/`](structrl/rsi/) | Training coordinator, Scheduler integration, and snapshot restoration |
 | [`configs/`](configs/) | Hydra training and simulator configurations |
 | [`scripts/`](scripts/) | Upstream setup, hook installation, and training entry points |
-| [`examples/robocasa365/`](examples/robocasa365/) | Ray launch scripts and milestone configuration example |
+| [`examples/robocasa365/`](examples/robocasa365/) | Ray launch scripts |
 | [`docs/`](docs/) | [Installation guide](docs/INSTALL.md), [method notes](docs/REFOCUS.md), and [StructRL baselines](docs/REPRODUCE.md) |
 
 <a name="attribution-and-license"></a>

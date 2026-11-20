@@ -31,13 +31,14 @@ class StageBalancedReward:
         self.cumulative_progress = 0.0
         self.cumulative_outcome = 0.0
         self.refined_target = None
+        self.milestone_checks = ()
         self.milestone_shares = {}
         self.milestones_paid = set()
         self.previous_milestones = set()
         self.milestone_stage = None
 
-    def configure_window(self, start, end, target, shares, signals):
-        """Enable one reviewed refinement after reset or verified restoration."""
+    def configure_window(self, start, end, target, shares, signals, *, checks=()):
+        """Enable one simulator-backed refinement after reset or restoration."""
         stage = next((idx for idx, group in enumerate(self.stages) if target in group), None)
         if stage is None:
             raise ValueError(f"Unknown refinement target: {target}")
@@ -51,25 +52,29 @@ class StageBalancedReward:
             raise ValueError("Milestones require a simulator signal for each intermediate check")
         self.refined_target = target
         self.milestone_stage = stage
+        self.milestone_checks = tuple(checks)
         self.milestone_shares = dict(shares)
         self.previous_milestones = {name for name, satisfied in signals.items() if satisfied}
 
     def step(self, grouped_states, success, sim_t=None, *, signals=None):
         if self.outcome_fired:
             return self._report(0.0, 0.0)
-        # Collect against the preceding stage, then advance the DAG once.
-        stage = self.stage_idx
-        active = self.stages[stage] if stage < self.K else ()
-        progress = grouped_states["progress"]
-        events = [name for name in active if progress.get(name, False) and not self.latched[name]]
-        per_subtask = 2.0 / self.K / len(active) if active else 0.0
-        reward = per_subtask * len(events)
-
+        current = set()
         if self.refined_target is not None:
             required = self.milestone_shares.keys() - {self.refined_target}
             if signals is None or signals.keys() != required:
                 raise ValueError("Missing verified milestone signals")
             current = {name for name, satisfied in signals.items() if satisfied}
+
+        # On success there may be no next control step. Settle observed
+        # completions in prerequisite order, stopping at the first unmet stage.
+        progress = grouped_states["progress"]
+        reward = 0.0
+        for stage in range(self.stage_idx, self.K):
+            active = self.stages[stage]
+            events = [name for name in active if progress.get(name, False) and not self.latched[name]]
+            per_subtask = 2.0 / self.K / len(active)
+            reward += per_subtask * len(events)
             if stage == self.milestone_stage and not self.latched[self.refined_target]:
                 new = current - self.previous_milestones - self.milestones_paid
                 if self.refined_target in events:
@@ -77,14 +82,16 @@ class StageBalancedReward:
                     reward -= per_subtask
                 reward += per_subtask * sum(self.milestone_shares[name] for name in sorted(new))
                 self.milestones_paid.update(new)
-            self.previous_milestones = current
-
-        for name in events:
-            self.latched[name] = True
-        if active and all(self.latched[name] for name in active):
+            for name in events:
+                self.latched[name] = True
+            if not all(self.latched[name] for name in active):
+                break
             self.stage_idx += 1
+            if not success:
+                break
+        self.previous_milestones = current
 
-        outcome = self.success_reward if success and not self.outcome_fired else 0.0
+        outcome = self.success_reward if success else 0.0
         self.outcome_fired |= bool(success)
         self.cumulative_progress += reward
         self.cumulative_outcome += outcome

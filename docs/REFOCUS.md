@@ -2,22 +2,46 @@
 
 ## Rewards
 
-The RoboCasa365 stage partition comes from `structrl/stage_config.py`. Only the
-stage active before a reward evaluation can earn progress credit, and each
-predicate earns credit once per episode. The simulator evaluates predicates
+ReFocus uses the 16 RoboCasa365 stage definitions from the paper's appendix
+in [`refocus/robocasa.py`](../refocus/robocasa.py). The StructRL baseline uses its
+original stage table. On a nonterminal step, only the stage active before
+reward evaluation can earn progress credit. Each predicate earns credit once
+per episode. The simulator evaluates predicates
 at each control step and RLinf aggregates their rewards over the action chunk.
-The candidate uses an undiscounted progress budget of 2 and a separate
+On the successful terminal step, the reward also settles newly eligible
+completions observed in that same state, in prerequisite order.
+ReFocus uses an undiscounted progress budget of 2 and a separate
 one-time full-task success reward of 2.
 
-The Scheduler records milestone proposals as JSON for review. The coordinator
-activates milestones only when a supplied `--refinements` file names a bundled
-simulator check and the selected window targets the relevant stage. The only
-bundled refinement targets `bowl_in_fridge` in `StoreLeftoversInBowl` and
-uses RoboCasa's existing grasp check for the bowl. It assigns half the original
-subtask reward to each of the grasp and placement events. Already-satisfied
-grasp state at entry earns no new credit. If placement occurs without a new
-eligible grasp event, it earns its own share. Original stage progression and
-full-task success still use the original predicates.
+### Scheduler milestone interface
+
+The Scheduler receives the stage predicates, available simulator object and fixture
+names, and the supported checks. Visual rollout evidence guides the choice of
+milestones. During training, the simulator evaluates their completion.
+
+Each selected window can include a `milestone_refinement` object. Its `target`
+is a subtask in the window's end stage. Its `milestones` array contains one to
+three intermediate checks, each with `name`, `check`, `object`, `reference`,
+and `share`. Use `object_grasped` with a null reference,
+`object_in_receptacle` with an object reference, or `object_inside_fixture` with
+a fixture reference. The final milestone uses the original target predicate.
+All shares, including `final_share`, are fractions of the target's original
+reward and sum to one. A null refinement uses the original progress reward.
+
+The coordinator records the raw response in `advisor_response_round<R>.json`,
+the validation results in `milestone_proposals_round<R>.json`, and the accepted
+windows in `windows_round<R>.json`. Local workers receive the accepted windows
+through `control.json` and verify the checks against each reset scene. An invalid
+refinement leaves that rollout's original progress reward in effect.
+
+Valid milestones can earn one-time credit in all three Local rollout modes
+after the target's prerequisites hold. Entry conditions already satisfied at
+reset earn no credit at reset. A final completion earns its own share. Original
+stage progression and full-task success use the task predicates.
+
+For an existing RLinf checkout with version 3 hooks, rerun the hook installer
+before starting Ray. Use a fresh ReFocus run directory to collect training
+entries with the appendix stage definitions and Scheduler-driven milestones.
 
 ## Interaction and restoration
 
