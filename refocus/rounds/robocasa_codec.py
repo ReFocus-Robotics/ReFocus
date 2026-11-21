@@ -33,6 +33,11 @@ def seed(env, seed):
     np.random.seed(seed)
 
 
+def reset_payload(kwargs, seed):
+    """The RoboCasa365 wrapper accepts the episode seed as a reset keyword."""
+    return dict(kwargs, seed=seed)
+
+
 def capture(env):
     return robocasa_snapshot.capture(env)
 

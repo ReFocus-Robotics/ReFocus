@@ -27,6 +27,11 @@ def seed(env, seed):
     np.random.seed(seed)
 
 
+def reset_payload(kwargs, seed):
+    """LIBERO rejects extra reset keywords; its scene comes from stored initial states."""
+    return dict(kwargs)
+
+
 def capture(env):
     """LIBERO rebuilds its scene on reset, so entries replay their actions instead."""
     return None

@@ -96,6 +96,9 @@ class ToyCodec:
     def seed(self, env, seed):
         env.seed_value = seed
 
+    def reset_payload(self, kwargs, seed):
+        return dict(kwargs, seed=seed)
+
     def views(self, obs):
         return observation_views(obs, CAMERAS)
 

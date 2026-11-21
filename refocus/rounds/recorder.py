@@ -82,9 +82,10 @@ class Recorder:
         self.rng = np.random.default_rng(1234 + self.slot)
 
     def seeded_reset(self, kwargs):
-        # Seed through the codec so reset kwargs stay benchmark-native.
+        # Benchmarks seed differently: RoboCasa365 carries the episode seed in the
+        # reset payload, LIBERO resets from stored initial states. The codec decides.
         self.codec.seed(self.env, int(self.seed))
-        return self.raw_reset(copy.deepcopy(kwargs))
+        return self.raw_reset(copy.deepcopy(self.codec.reset_payload(kwargs, int(self.seed))))
 
     def _sample_entry(self, window):
         folder = self.root / 'entries' / str(self.control['round']) / self.task / str(window['start_stage'])
