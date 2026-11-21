@@ -87,7 +87,7 @@ bash scripts/run_rounds.sh \
   --scheduler-base-url "$SCHEDULER_BASE_URL" --scheduler-model "$SCHEDULER_MODEL"
 ~~~
 
-The [training configuration](configs/robocasa365_ppo_openpi_pi05_refocus_16gpu.yaml) uses **256 training environments**, a **global batch of 512**, and a **microbatch of 32 per GPU**. Three rounds of 25 Global and 25 Local PPO updates are run. At each diagnostic checkpoint the coordinator evaluates five normal-start episodes per task. Outputs are written to `$STRUCTRL_ROUNDS_ROOT`.
+The [training configuration](configs/robocasa365_ppo_openpi_pi05_refocus_16gpu.yaml) uses **256 training environments**, a **global batch of 512**, and a **microbatch of 32 per GPU**. Three rounds of 25 Global and 25 Local PPO updates are run. At each evaluation checkpoint the coordinator runs five normal-start episodes per task. Outputs are written to `$STRUCTRL_ROUNDS_ROOT`.
 
 #### LIBERO-Long on one 8-GPU host
 

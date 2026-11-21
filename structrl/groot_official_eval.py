@@ -34,9 +34,7 @@ sys.path = [p for p in sys.path if not (
 )]
 
 import robocasa  # noqa: E402,F401
-import inspect  # noqa: E402
 import numpy as np  # noqa: E402
-print(f"[debug] robocasa loaded from: {inspect.getfile(robocasa)}", flush=True)
 
 # Monkey-patch RoboCasaEnv.render to return a 3-camera horizontal strip
 # (left agentview | right agentview | wrist) instead of just the first cam.

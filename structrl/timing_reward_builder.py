@@ -3,7 +3,7 @@
 Both the offline video overlay (visualize_timing_reward.py) and the online PPO
 env subprocess (RLinf rlinf/envs/robocasa365/venv.py) must construct the exact
 same TimingReward for a given task, so the reward the policy is trained on is
-byte-for-byte the reward shown in the diagnostic videos. This module is the
+byte-for-byte the reward shown in the offline overlay. This module is the
 single source of truth for that construction.
 """
 from __future__ import annotations

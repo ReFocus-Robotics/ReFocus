@@ -95,7 +95,7 @@ class TimingReward:
 
     Construct once per env at episode start (or call `reset()` between
     episodes). Call `step(grouped_states, success)` each env step to get
-    that step's reward and a debug dict for visualization.
+    that step's reward and a per-step record of its components.
 
     Attributes (read-only after step()):
       stage_idx       : int     — current stage being attempted

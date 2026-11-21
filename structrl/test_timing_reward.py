@@ -9,7 +9,7 @@ from structrl.timing_reward import TimingReward, OUTCOME_REWARD
 
 def _run(traj_events: list[tuple[int, dict]], traj_success_step: int | None,
          tr: TimingReward, T: int) -> tuple[float, list[dict]]:
-    """Run a trajectory through tr, return (cumulative, per-step debug list).
+    """Run a trajectory through tr, return (cumulative, per-step records).
 
     traj_events: list of (step, {"progress": {...}, "quiescence": {...}})
                  Steps not in this list use the previous step's flags.
@@ -22,7 +22,7 @@ def _run(traj_events: list[tuple[int, dict]], traj_success_step: int | None,
     cur_quiescence: dict[str, bool] = {}
     schedule: dict[int, dict] = {s: g for s, g in traj_events}
 
-    debug = []
+    records = []
     for t in range(T):
         if t in schedule:
             for k, v in schedule[t].get("progress", {}).items():
@@ -37,21 +37,21 @@ def _run(traj_events: list[tuple[int, dict]], traj_success_step: int | None,
              "quiescence": OrderedDict(cur_quiescence)},
             success,
         )
-        debug.append(info)
-    return tr.cumulative, debug
+        records.append(info)
+    return tr.cumulative, records
 
 
 # Helper for printing
-def _print_summary(name: str, total: float, debug: list[dict]):
-    n = len(debug)
-    last = debug[-1]
-    n_events = sum(len(d["events"]) for d in debug)
+def _print_summary(name: str, total: float, records: list[dict]):
+    n = len(records)
+    last = records[-1]
+    n_events = sum(len(d["events"]) for d in records)
     print(f"\n[{name}] T={n} cum={total:.4f}  "
           f"prog={last['cumulative_progress']:.4f} "
           f"persist={last['cumulative_persistent']:.4f} "
           f"outcome={last['cumulative_outcome']:.4f}  "
           f"#events={n_events}")
-    for d in debug:
+    for d in records:
         if d["events"] or d["r_persistent"] != 0 or d["r_outcome"] != 0:
             tag = "★" if d["r_outcome"] > 0 else ("E" if d["events"] else "p")
             print(f"  step {d['t']:>4} {tag}  r={d['r_total']:+.4f}  "
