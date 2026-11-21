@@ -56,15 +56,3 @@ again. Elapsed controls shorten the remaining horizon in both cases.
 | `SCHEDULER_API_KEY`, `SCHEDULER_BASE_URL`, `SCHEDULER_MODEL` | Scheduler endpoint. |
 
 Use a separate run root per reward variant and per Scheduler.
-
-## LIBERO specifics
-
-The LIBERO integration lives in `patches/libero_addon.patch`. Stages are keyed
-by BDDL goal conjuncts, so the same stage-balanced reward applies unchanged.
-Two tasks are sequential (cabinet: bowl then close; microwave: mug then close);
-the rest have a single unordered stage. Conjuncts already true at reset are
-marked satisfied and do not block progress.
-
-Each task has 50 official initial states. Set `train_reset_state_ids` and
-`eval_reset_state_ids` to non-overlapping index lists to keep training states
-out of development evaluation; both are optional and default to the full pool.
