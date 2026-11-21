@@ -2,17 +2,9 @@
 
 ## ReFocus rounds
 
-The coordinator runs Global and Local PPO phases in round order. Start it with
-`scripts/run_rounds.sh`; the [README](../README.md#training) documents the
-cluster setup, and [REFOCUS.md](REFOCUS.md) documents the rewards, restoration
-and environment variables.
-
-- **RoboCasa365.** 16 Composite-Seen tasks, 50-action chunks, a 2900-step
-  horizon, three rounds of 25 Global and 25 Local updates on two 8-GPU nodes.
-- **LIBERO-Long.** Ten `libero_10` tasks, 10-action chunks, a 1024-step episode
-  limit, the same round schedule on one 8-GPU node.
-
-Run the round schedule:
+Start the coordinator with `scripts/run_rounds.sh`; cluster setup is in the
+[README](../README.md#training) and rewards, restoration and environment
+variables are in [REFOCUS.md](REFOCUS.md).
 
 ```bash
 bash scripts/run_rounds.sh --benchmark libero_10 \
@@ -21,31 +13,24 @@ bash scripts/run_rounds.sh --benchmark libero_10 \
   --scheduler-base-url "$SCHEDULER_BASE_URL" --scheduler-model "$SCHEDULER_MODEL"
 ```
 
-The final benchmark numbers use a separate evaluation run on the last
-checkpoint with the official protocol; the coordinator's per-round evaluation
-is a development signal and is not the reported score.
+Use `--benchmark robocasa365` for RoboCasa365. `train_reset_state_ids` /
+`eval_reset_state_ids` and all training parameters are in the configs.
+
+The reported numbers come from a separate evaluation run on the final
+checkpoint with the official protocol. The coordinator's per-round evaluation
+is a development signal, not the reported score.
 
 ## Inherited StructRL baselines
 
-These launchers use RoboCasa365 Composite-Seen and the original StructRL
-target-split evaluation procedure. They provide the baseline entry points
-that are relevant to this repository. See [installation](INSTALL.md) for
-the pinned dependencies and [RLinf examples](../examples/robocasa365/rlinf/README.md)
-for the two-node launchers.
+For RoboCasa365 Composite-Seen, these launchers use the original StructRL
+target-split evaluation and the same π<sub>0.5</sub> SFT initialization as
+`PI05_SFT_CKPT`.
 
 | Policy | Sparse-RL | StructRL |
 | --- | --- | --- |
 | π0.5 | [PPO](../launch/train_pi05_sparse_rl_ppo.sbatch) | [PPO](../launch/train_pi05_structrl_ppo.sbatch), [GRPO](../launch/train_pi05_structrl_grpo.sbatch) |
 | GR00T-N1.5 | [PPO](../launch/train_gr00t_sparse_rl_ppo.sbatch) | [PPO](../launch/train_gr00t_structrl_ppo.sbatch), [GRPO](../launch/train_gr00t_structrl_grpo.sbatch) |
 
-To compare the π0.5 training variants, use the same Composite-Seen
-PyTorch SFT initialization. The [SFT launcher](../launch/sft_pi05.sh)
-produces the checkpoint referenced by `PI05_SFT_CKPT`. Use independent run
-directories for each configuration. Baseline launchers include cluster settings
-that should be adapted to the available Ray or Slurm deployment.
-
-LIBERO-Long baselines use the same policy and reward constants with 10-step
-action chunks and a 1024-step episode limit; run them with
-`LIBERO_REWARD_VARIANT=structrl`. The ReFocus path, including LIBERO stage
-tables and the round coordinator, is documented in
-[method and reproducibility notes](REFOCUS.md).
+Use an independent run directory per configuration and adapt the cluster
+settings to your Ray or Slurm deployment. For LIBERO-Long baselines, run them
+with `LIBERO_REWARD_VARIANT=structrl`.
