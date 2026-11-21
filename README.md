@@ -26,9 +26,7 @@
 
 ## ✨ Overview
 
-Online reinforcement learning (RL) enables vision-language-action policies to improve through environmental interaction. However, in long-horizon manipulation, sparse success/failure feedback provides little information about where policies encounter bottlenecks. Moreover, repeated full-task rollouts also leave these bottlenecks weakly analyzed and insufficiently practiced. To this end, we introduce **ReFocus**, a progress-guided multi-round RL framework that alternates Global with Local RL to identify task-specific bottlenecks and allocate additional practice to them. Specifically, during Global RL, we decompose each task into a Directed Acyclic Graph (DAG) of subtasks. Then a DAG-based Progress Reward is leveraged for both policy training and bottleneck diagnosis. Based on the identified bottlenecks, ReFocus selects Adaptive Practice Windows, defining task segments from an entry stage to a target stage. It allocates additional interaction to these segments during Local RL while updating the entire policy. After that, it evaluates the policy to perform the full-task for the next round RL, forming an iteration between Global and Local RL.
-
-Experiments on LIBERO-Long and RoboCasa365 show that ReFocus achieves success rates of 97.8% and 51.3% respectively, compared with 90.6% and 39.3% for the π<sub>0.5</sub> baseline. Furthermore, we evaluate a real-world adaptation on three long-horizon tasks. On BreadBaker, ReFocus achieves 95% success, compared with 30% for the π<sub>0.5</sub>.
+Online reinforcement learning (RL) enables vision-language-action policies to improve through environmental interaction. However, in long-horizon manipulation, sparse success/failure feedback provides little information about where policies encounter bottlenecks. Moreover, repeated full-task rollouts also leave these bottlenecks weakly analyzed and insufficiently practiced. To this end, we introduce **ReFocus**, a progress-guided multi-round RL framework that alternates Global with Local RL to identify task-specific bottlenecks and allocate additional practice to them. Specifically, during Global RL, we decompose each task into a Directed Acyclic Graph (DAG) of subtasks. Then a DAG-based Progress Reward is leveraged for both policy training and bottleneck diagnosis. Based on the identified bottlenecks, ReFocus selects Adaptive Practice Windows, defining task segments from an entry stage to a target stage. It allocates additional interaction to these segments during Local RL while updating the entire policy. After that, it evaluates the policy to perform the full-task for the next round RL, forming an iteration between Global and Local RL. Experiments on LIBERO-Long and RoboCasa365 show that ReFocus achieves success rates of 97.8% and 51.3% respectively, compared with 90.6% and 39.3% for the π<sub>0.5</sub> baseline. Furthermore, we evaluate a real-world adaptation on three long-horizon tasks. On BreadBaker, ReFocus achieves 95% success, compared with 30% for the π<sub>0.5</sub>.
 
 <a name="environment-setup"></a>
 
@@ -41,7 +39,7 @@ conda activate refocus
 
 ### Data and checkpoints
 
-- **RoboCasa365.** Prepare the [simulation assets](docs/INSTALL.md#download-simulator-assets-and-prepare-the-checkpoint) and the [demonstration dataset](https://robocasa.ai/docs/build/html/datasets/using_datasets.html) and pretrained π<sub>0.5</sub> weights.
+- **RoboCasa365.** Prepare the [simulation assets](docs/INSTALL.md#download-simulator-assets-and-prepare-the-checkpoint), the [demonstration dataset](https://robocasa.ai/docs/build/html/datasets/using_datasets.html) and pretrained [π<sub>0.5</sub> weights](https://huggingface.co/robocasa/robocasa365_checkpoints/tree/main/pi05_pretrain_human300/multitask_learning/75000).
 - **LIBERO-Long.** Prepare the [LIBERO simulator assets and benchmark initial states](https://github.com/RLinf/LIBERO) and the [RLinf π<sub>0.5</sub> LIBERO SFT checkpoint](https://huggingface.co/RLinf/RLinf-Pi05-LIBERO-130-fullshot-SFT).
 
 <a name="training"></a>
@@ -53,9 +51,9 @@ conda activate refocus
 - **RoboCasa365.** Fine-tune π<sub>0.5</sub> on demonstrations using the [SFT launcher](launch/sft_pi05.sh) and [setup instructions](docs/INSTALL.md#3-data-and-sft-checkpoints). 
 - **LIBERO-Long.** Initialize RL directly from the [π<sub>0.5</sub> SFT checkpoint released by RLinf](https://huggingface.co/RLinf/RLinf-Pi05-LIBERO-130-fullshot-SFT).
 
-### 2. ReFocus RL post-training
+### 2. ReFocus post-training
 
-The commands below run ReFocus RL on RoboCasa365.
+The commands below run ReFocus on LIBERO-Long and RoboCasa365.
 
 #### Configure both Ray nodes
 
@@ -78,7 +76,7 @@ Install the hooks once in the shared RLinf checkout, before starting Ray.
 python scripts/install_rsi_hooks.py "$RLINF_ROOT"
 ~~~
 
-Run `bash examples/robocasa365/rlinf/ray_head_8gpu.sh` on the head node and
+For Robocasa365, run `bash examples/robocasa365/rlinf/ray_head_8gpu.sh` on the head node and
 `bash examples/robocasa365/rlinf/ray_worker_8gpu.sh` on the worker node.
 
 #### Launch ReFocus on the head node
