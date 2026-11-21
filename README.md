@@ -41,7 +41,7 @@ conda activate refocus
 
 ### Data and checkpoints
 
-- **RoboCasa365.** Prepare the [simulation assets](docs/INSTALL.md#download-simulator-assets-and-prepare-the-checkpoint) and, for SFT, the [demonstration dataset](https://robocasa.ai/docs/build/html/datasets/using_datasets.html) and pretrained π<sub>0.5</sub> weights. RL starts from a π<sub>0.5</sub> PyTorch SFT checkpoint with `robocasa365/norm_stats.json`.
+- **RoboCasa365.** Prepare the [simulation assets](docs/INSTALL.md#download-simulator-assets-and-prepare-the-checkpoint) and the [demonstration dataset](https://robocasa.ai/docs/build/html/datasets/using_datasets.html) and pretrained π<sub>0.5</sub> weights.
 - **LIBERO-Long.** Prepare the [LIBERO simulator assets and benchmark initial states](https://github.com/RLinf/LIBERO) and the [RLinf π<sub>0.5</sub> LIBERO SFT checkpoint](https://huggingface.co/RLinf/RLinf-Pi05-LIBERO-130-fullshot-SFT).
 
 <a name="training"></a>
@@ -50,7 +50,7 @@ conda activate refocus
 
 ### 1. SFT initialization
 
-- **RoboCasa365.** Fine-tune π<sub>0.5</sub> on demonstrations using the [SFT launcher](launch/sft_pi05.sh) and [setup instructions](docs/INSTALL.md#3-data-and-sft-checkpoints). Convert the resulting JAX checkpoint to PyTorch with the [OpenPI conversion script](https://github.com/robocasa-benchmark/openpi/blob/5a6beda9ff99da30b4e1b59320f6a32971d7c397/examples/convert_jax_model_to_pytorch.py), then set `PI05_SFT_CKPT` to the export.
+- **RoboCasa365.** Fine-tune π<sub>0.5</sub> on demonstrations using the [SFT launcher](launch/sft_pi05.sh) and [setup instructions](docs/INSTALL.md#3-data-and-sft-checkpoints). 
 - **LIBERO-Long.** Initialize RL directly from the [π<sub>0.5</sub> SFT checkpoint released by RLinf](https://huggingface.co/RLinf/RLinf-Pi05-LIBERO-130-fullshot-SFT).
 
 ### 2. ReFocus RL post-training
