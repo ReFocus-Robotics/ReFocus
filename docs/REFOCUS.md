@@ -87,3 +87,34 @@ scene. The distributed training command is documented in the
 Set `STRUCTRL_REWARD_VARIANT=structrl` to use the StructRL reward in the
 coordinator. This variant uses normal-start full-task rollouts in slot three
 of the local mixture. Use a separate run directory for it.
+
+## LIBERO
+
+ReFocus supports LIBERO-10 (the standard `libero_10` suite) alongside
+RoboCasa365. The stage definitions use BDDL goal conjunct tuples as subtask
+keys instead of named predicates, so the same stage-balanced reward logic
+applies without modification.
+
+Apply `patches/libero_addon.patch` to a separate RLinf checkout and set the
+following environment variables before training:
+
+| Variable | Required value | Purpose |
+| --- | --- | --- |
+| `LIBERO_DENSE_REWARD` | `1` | Enable the BDDL milestone reward |
+| `LIBERO_REWARD_VARIANT` | `refocus` | Select the stage-balanced variant |
+| `STRUCTRL_REWARD_VARIANT` | `refocus` | Match the RSI coordinator |
+
+The two-stage BDDL tasks (KITCHEN4: bowl then close cabinet; KITCHEN6: mug
+then close microwave) are defined in `dense_reward.py` under `TASK_STAGES`.
+All other tasks have a single parallel stage covering their goal conjuncts.
+Conjuncts already satisfied at episode reset earn no reward and do not block
+stage completion.
+
+### Seed separation
+
+LIBERO has 50 official initial states per task. To prevent training states from
+appearing during dev evaluation, set `train_reset_state_ids` and
+`eval_reset_state_ids` in the env config to non-overlapping index lists (e.g.
+indices 0–39 for training and 40–49 for dev eval). The final test eval uses all
+50 states (or a dedicated `test_reset_state_ids` subset). These fields are
+optional; omitting them uses the full pool, which is the default RLinf behavior.

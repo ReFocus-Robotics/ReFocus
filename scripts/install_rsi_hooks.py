@@ -82,8 +82,7 @@ def transform_worker(s):
 def install(root):
     root=Path(root)
     marker=root/'.structrl_rsi_hooks_v4'
-    previous_marker=root/'.structrl_rsi_hooks_v3'
-    if marker.exists() or (root / '.structrl_rsi_hooks_v2').exists():
+    if marker.exists():
         raise ValueError('Already patched; use a fresh isolated runtime')
     paths={
       'worker':root/'rlinf/envs/robocasa365/venv.py',
@@ -91,23 +90,6 @@ def install(root):
       'base':root/'rlinf/envs/robocasa/robocasa_env.py',
       'runner':root/'rlinf/runners/embodied_runner.py',
       'bootstrap':root/'rlinf/workers/env/env_worker.py'}
-    if previous_marker.exists():
-        worker = paths['worker']
-        old = 'signals=milestone_signals(inner))'
-        new = 'signals=milestone_signals(inner, timing_reward.milestone_checks))'
-        source = worker.read_text()
-        if new not in source or 'get_refocus_subtask_states' not in source:
-            if new not in source:
-                source = once(source, old, new)
-            if 'get_refocus_subtask_states' not in source:
-                source = route_progress_checks(source, ' ' * 12)
-            compile(source, str(worker), 'exec')
-            staged = worker.with_suffix('.py.refocus-tmp')
-            staged.write_text(source)
-            os.replace(staged, worker)
-        marker.write_text('v4\n')
-        previous_marker.unlink()
-        return
     outputs={};outputs['worker']=transform_worker(paths['worker'].read_text())
     s=paths['env'].read_text()
     s=once(s,'    def get_env_fns(self):\n        env_fns = []',

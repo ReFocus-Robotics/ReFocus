@@ -1180,15 +1180,6 @@ index e145c3b2..5b8f6b4d 100644
          mode: Literal["train", "eval"] = "train",
          **kwargs,
      ) -> tuple[torch.Tensor, dict[str, Any]]:
-+        import os as _os
-+
-+        _dbg = _os.environ.get("RLINF_DUMP_DIR", "")
-+        _do_dump = bool(_dbg) and not getattr(self, "_dumped_once", False)
-+        if _do_dump:
-+            _os.makedirs(_dbg, exist_ok=True)
-+            _snap = {f"env_obs.{k}": (v.detach().cpu() if torch.is_tensor(v) else v)
-+                     for k, v in env_obs.items()}
-+
          # Here we have a source causing tiny inference-training inconsistency,
          # force convert the state to bf16 then back to float32 to reproduce the info loss in training.
          env_obs["states"] = env_obs["states"].to(torch.bfloat16)
@@ -1204,25 +1195,10 @@ index e145c3b2..5b8f6b4d 100644
          normalized_input["eagle_input_ids"] = torch.nn.functional.pad(
              normalized_input["eagle_input_ids"],
              pad=(0, self.padding_value - normalized_input["eagle_input_ids"].shape[-1]),
-@@ -617,6 +706,21 @@ class GR00T_N1_5_ForRLActionPrediction(GR00T_N1_5, BasePolicy):
+@@ -617,6 +706,6 @@ class GR00T_N1_5_ForRLActionPrediction(GR00T_N1_5, BasePolicy):
              unnormalized_action, chunk_size=self.output_action_chunks
          )
- 
-+        if _do_dump:
-+            for k, v in normalized_input.items():
-+                _snap[f"norm_in.{k}"] = (
-+                    v.detach().cpu() if torch.is_tensor(v) else v
-+                )
-+            for k, v in unnormalized_action.items():
-+                _snap[f"unnorm_act.{k}"] = (
-+                    v.detach().cpu() if torch.is_tensor(v) else np.asarray(v)
-+                )
-+            _snap["raw_action"] = np.asarray(raw_action)
-+            _snap["mode"] = mode
-+            torch.save(_snap, _os.path.join(_dbg, "rlinf_frame0.pt"))
-+            self._dumped_once = True
-+            print(f"[RLINF_DUMP] wrote frame0 snapshot to {_dbg}", flush=True)
-+
+
          return torch.from_numpy(raw_action), result
  
      def apply_transforms(self, obs: dict[str, Any]) -> dict[str, Any]:
@@ -2846,91 +2822,11 @@ index 107245a8..3f0af75f 100644
  
          # create weight syncer
          weight_syncer_cfg = OmegaConf.select(cfg, "weight_syncer")
-@@ -1214,6 +1256,87 @@ class EmbodiedFSDPActor(FSDPModelManager, Worker):
+@@ -1214,6 +1256,6 @@ class EmbodiedFSDPActor(FSDPModelManager, Worker):
          if kwargs["loss_mask_sum"] is not None:
              self.rollout_batch.update({"loss_mask_sum": kwargs["loss_mask_sum"]})
- 
-+        # ----- DIAGNOSTIC: dump one real success traj's reward/return/done -----
-+        # Pick the first env in this rank's batch that hit a success during this
-+        # rollout (per-step termination flips True at some chunk). Print:
-+        #   reward[0..T], return[0..T], done[0..T], loss_mask[0..T]
-+        # so we can VISUALLY confirm whether the success-chunk reward propagated
-+        # back to chunks 0..k. Only rank 0, only when the dump file does not yet
-+        # exist (so we capture exactly the FIRST GS to keep log noise low).
-+        try:
-+            import os
-+            dump_path = os.path.join(
-+                self.cfg.runner.logger.log_path, "first_traj_dump.txt"
-+            )
-+            if self._rank == 0 and not os.path.exists(dump_path):
-+                rew = self.rollout_batch["rewards"]              # [T,B,K]
-+                ret = self.rollout_batch.get("returns", None)
-+                dones = self.rollout_batch["dones"]              # [T+1,B,K]
-+                lm = self.rollout_batch.get("loss_mask", None)
-+                # chunk_level summed already lives in adv preprocess; here
-+                # rewards is [T,B,K]. Sum across K for "per-chunk reward",
-+                # max across K for done-per-chunk.
-+                r_chunk = rew.float().sum(dim=-1)                # [T,B]
-+                d_chunk = dones.bool().any(dim=-1)               # [T+1,B]
-+                # Pick first env with any success this rollout. terminations
-+                # tensor sticky after success in raw env, but our done_shift
-+                # latch flips first-done one chunk LATER, so the success-chunk
-+                # itself has done=False; treat any chunk-with-done as the
-+                # "post-success" boundary. The success chunk = (first done chunk - 1).
-+                # If done_shift didn't fire (e.g. no env succeeded), pick env 0.
-+                T, B = r_chunk.shape
-+                target_env = None
-+                first_done_chunk = None
-+                for e in range(B):
-+                    # find first chunk where done flips True (excluding the
-+                    # appended +1 step at index T)
-+                    fd = (d_chunk[:T, e]).nonzero(as_tuple=False)
-+                    if fd.numel() > 0:
-+                        target_env = e
-+                        first_done_chunk = int(fd[0].item())
-+                        break
-+                if target_env is None:
-+                    target_env, first_done_chunk = 0, -1
-+
-+                lines = []
-+                lines.append(f"first_traj_dump  rank=0  env_in_batch={target_env}  "
-+                             f"first_done_chunk={first_done_chunk}  "
-+                             f"(success_chunk = first_done-1 if done_shift on)")
-+                lines.append(f"shape: rewards={tuple(rew.shape)} "
-+                             f"returns={None if ret is None else tuple(ret.shape)} "
-+                             f"dones={tuple(dones.shape)}")
-+                # rewards per chunk
-+                lines.append("chunk |   reward    |   return    | done | loss_mask")
-+                # returns shape after preprocess is [T,B] for chunk_level
-+                ret_v = None if ret is None else ret.float()
-+                if ret_v is not None and ret_v.dim() == 3:
-+                    ret_v = ret_v.sum(dim=-1)
-+                lm_v = None
-+                if lm is not None:
-+                    lm_t = lm.float()
-+                    if lm_t.dim() == 3:
-+                        lm_v = lm_t.any(dim=-1).bool()
-+                    else:
-+                        lm_v = lm_t.bool()
-+                for c in range(T):
-+                    rv = float(r_chunk[c, target_env].item())
-+                    rt = (
-+                        "   n/a   "
-+                        if ret_v is None
-+                        else f"{float(ret_v[c, target_env].item()):+9.4f}"
-+                    )
-+                    dv = "T" if bool(d_chunk[c, target_env].item()) else "."
-+                    mv = "." if lm_v is None else ("T" if bool(lm_v[c, target_env].item()) else "F")
-+                    lines.append(f" {c:4d} | {rv:+9.4f}  | {rt}   |  {dv}   |  {mv}")
-+                with open(dump_path, "w") as f:
-+                    f.write("\n".join(lines) + "\n")
-+                self.log_info(f"[DIAGNOSTIC] dumped first traj to {dump_path}")
-+        except Exception as _e:
-+            try:
-+                self.log_warning(f"[DIAGNOSTIC] dump failed: {_e!r}")
-+            except Exception:
-+                pass
-+
+
+
          rollout_metrics = compute_rollout_metrics(self.rollout_batch)
          return rollout_metrics
  
@@ -3876,7 +3772,7 @@ index 00000000..6a61c471
 +    ap.add_argument("--chunks", type=int, nargs="+", default=[120, 43, 7])
 +    args = ap.parse_args()
 +    ok = True
-+    check(args.chunks, "sparse", done_shift=False)  # CURRENT broken behavior
++    check(args.chunks, "sparse", done_shift=False)
 +    ok &= check(args.chunks, "sparse", done_shift=True)
 +    ok &= check(args.chunks, "timing", done_shift=True)
 +    print(f"\n{'#' * 64}\nOVERALL: {'PASS' if ok else 'FAIL'}\n{'#' * 64}")

@@ -508,12 +508,112 @@ index 00000000..227cd042
 +            cumulative_outcome=self.cumulative_outcome,
 +            events=events,
 +        )
-diff --git a/rlinf/envs/libero/venv.py b/rlinf/envs/libero/venv.py
++
++
++class LiberoBDDLStageReward:
++    """Stage-balanced ReFocus reward for LIBERO, bridged to BDDL conjunct-tuple stages.
++
++    Converts conjunct tuples (e.g. ("turnon", "flat_stove_1")) to '::'-joined string
++    keys so StageBalancedReward can track per-stage progress from BDDL predicate
++    evaluations.  The per-task success_reward matches the RoboCasa365 budget (2.0).
++    """
++
++    _SEP = "::"
++
++    @staticmethod
++    def conjunct_key(c: tuple) -> str:
++        return LiberoBDDLStageReward._SEP.join(str(x) for x in c)
++
++    def __init__(self, stages: list[list[tuple]], *, success_reward: float = 2.0):
++        from refocus.reward import StageBalancedReward
++        self._conj_to_key: dict[tuple, str] = {}
++        string_stages = []
++        for stage in stages:
++            str_stage = []
++            for c in stage:
++                key = self.conjunct_key(c)
++                self._conj_to_key[c] = key
++                str_stage.append(key)
++            string_stages.append(str_stage)
++        self._reward = StageBalancedReward(string_stages, success_reward=success_reward)
++        self.stages_template: list[list[str]] = [list(s) for s in string_stages]
++        self.all_subtasks: set[str] = {k for s in self.stages_template for k in s}
++
++    def reset(self, already_true: Optional[set] = None) -> None:
++        """Start a fresh episode.  already_true: conjuncts TRUE at reset — marked
++        latched immediately and skipped in stage completion checks so they earn
++        no reward and don't block subsequent stages."""
++        self._reward.reset()
++        if already_true:
++            for c in already_true:
++                key = self._conj_to_key.get(c)
++                if key and key in self._reward.latched:
++                    self._reward.latched[key] = True
++            while self._reward.stage_idx < self._reward.K:
++                stage = self._reward.stages[self._reward.stage_idx]
++                if all(self._reward.latched.get(name, False) for name in stage):
++                    self._reward.stage_idx += 1
++                else:
++                    break
++
++    def step(self, true_now: set, success: bool) -> dict:
++        true_keys = {self._conj_to_key[c] for c in true_now if c in self._conj_to_key}
++        progress = {k: (k in true_keys) for k in self.all_subtasks}
++        result = self._reward.step({"progress": progress}, success)
++        result["n_total"] = len(self.all_subtasks)
++        result["n_latched"] = sum(1 for v in self._reward.latched.values() if v)
++        return result
++
++    @property
++    def stage_idx(self) -> int:
++        return self._reward.stage_idx
++
++    @property
++    def K(self) -> int:
++        return self._reward.K
++
++    @property
++    def stages(self) -> list:
++        return self._reward.stages
++
++    @property
++    def outcome_fired(self) -> bool:
++        return self._reward.outcome_fired
++
++    @property
++    def cumulative(self) -> float:
++        return self._reward.cumulative
++
++    @property
++    def cumulative_progress(self) -> float:
++        return self._reward.cumulative_progress
++
++    @property
++    def cumulative_outcome(self) -> float:
++        return self._reward.cumulative_outcome
+diff --git a/rlinf/envs/libero/libero_env.py b/rlinf/envs/libero/libero_env.py
+--- a/rlinf/envs/libero/libero_env.py
++++ b/rlinf/envs/libero/libero_env.py
+@@ -388,6 +388,16 @@ class LiberoEnv(gym.Env):
+         else:
+             self._valid_reset_state_ids = None
+
++        # Seed separation: optional config fields restrict the train/eval pools
++        # to non-overlapping subsets of the official 50 initial states per task.
++        # train_reset_state_ids selects the per-task trial indices used during
++        # training; eval_reset_state_ids selects the pool used during dev eval.
++        # Neither field is required; when absent the full pool is used as before.
++        # Set test_reset_state_ids (or leave unset to use all 50) for final eval.
++        split_key = "eval_reset_state_ids" if self.cfg.is_eval else "train_reset_state_ids"
++        split_ids = self.cfg.get(split_key, None)
++        if split_ids is not None:
++            self._valid_reset_state_ids = np.array(list(split_ids), dtype=int)
++
+ diff --git a/rlinf/envs/libero/venv.py b/rlinf/envs/libero/venv.py
 index acf4862d..9450a019 100644
 --- a/rlinf/envs/libero/venv.py
 +++ b/rlinf/envs/libero/venv.py
-@@ -97,6 +97,143 @@ def _worker(
- 
+@@ -97,6 +97,143 @@ def _worker( 
      parent.close()
      env = env_fn_wrapper.data()
 +    # ---- Dense BDDL-milestone reward (Phase 2), fully gated --------------
@@ -524,9 +624,9 @@ index acf4862d..9450a019 100644
 +    # pays zero overhead and sees identical behavior.
 +    import os as _os
 +    _dense_on = _os.environ.get("LIBERO_DENSE_REWARD", "0").strip() == "1"
-+    # Reward variant (LIBERO_REWARD_VARIANT): "fixed" (= "flat", default) pays
-+    # 0.3 per completed subtask; "structrl" (= "smooth_band") is the paper's
-+    # reward, paced by beta / (1 + T / T_d) with the demonstration durations.
++    # Reward variant (LIBERO_REWARD_VARIANT): "flat" (default) pays 0.3 per
++    # completed subtask; "smooth_band" is the StructRL timing-shaped reward;
++    # "refocus" is the stage-balanced ReFocus reward matching RoboCasa365.
 +    _reward_variant = _os.environ.get(
 +        "LIBERO_REWARD_VARIANT", "flat"
 +    ).strip().lower()
@@ -544,6 +644,7 @@ index acf4862d..9450a019 100644
 +            from rlinf.envs.libero.dense_reward import (
 +                LiberoDenseReward,
 +                LiberoSmoothBandReward,
++                LiberoBDDLStageReward,
 +                eval_conjuncts_true,
 +                get_rank_budgets,
 +                get_stage_def,
@@ -563,7 +664,9 @@ index acf4862d..9450a019 100644
 +                    _dense["sig"] = sig
 +                    _dense["inner"] = inner
 +                    return
-+                if is_timed:
++                if _reward_variant == "refocus":
++                    _dense["reward"] = LiberoBDDLStageReward(stage_def)
++                elif is_timed:
 +                    _dense["reward"] = LiberoSmoothBandReward(stage_def)
 +                else:
 +                    _dense["reward"] = LiberoDenseReward(stage_def)
@@ -575,7 +678,9 @@ index acf4862d..9450a019 100644
 +            for s in _dense["reward"].stages_template:
 +                all_conj.update(s)
 +            already = eval_conjuncts_true(inner, all_conj)
-+            if is_timed:
++            if _reward_variant == "refocus":
++                _dense["reward"].reset(already_true=already)
++            elif is_timed:
 +                # Post-drop rank budgets for this task (from demo-timing JSON);
 +                # None falls back to per-class neutral default inside reset.
 +                budgets = get_rank_budgets(goal_state)

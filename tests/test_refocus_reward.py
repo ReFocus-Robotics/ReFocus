@@ -60,7 +60,28 @@ def test_milestones_stay_gated_by_the_target_prerequisites():
     reward = StageBalancedReward([["prep"], ["target"]])
     reward.configure_window(0, 1, "target", {"grasp": 0.5, "target": 0.5}, {"grasp": False})
     assert advance(reward, "prep", signals={"grasp": True})["r_total"] == 1
-    assert advance(reward, "target", signals={"grasp": True})["r_total"] == 0.5
+    # grasp became True before the milestone stage opened, so its credit was not
+    # issued in stage 0. On target completion the budget is preserved by
+    # claiming the uncredited grasp share together with the target share.
+    assert advance(reward, "target", signals={"grasp": True})["r_total"] == 1
+
+
+def test_pre_satisfied_milestone_claims_share_on_target_completion():
+    reward = StageBalancedReward([["prep"], ["target"]])
+    reward.configure_window(0, 1, "target", {"grasp": 0.5, "target": 0.5}, {"grasp": True})
+    assert advance(reward, "prep", signals={"grasp": True})["r_total"] == 1
+    # grasp was pre-satisfied at window entry and never triggered in-episode.
+    # Its share is claimed on target completion, preserving the full budget.
+    assert advance(reward, "target", signals={"grasp": True})["r_total"] == 1
+
+
+def test_untriggered_milestone_share_claimed_on_target_completion():
+    reward = StageBalancedReward([["prep"], ["target"]])
+    reward.configure_window(0, 1, "target", {"grasp": 0.5, "target": 0.5}, {"grasp": False})
+    assert advance(reward, "prep", signals={"grasp": False})["r_total"] == 1
+    # grasp never became True; its share is still claimed on target completion
+    # so the total progress budget is preserved.
+    assert advance(reward, "target", signals={"grasp": False})["r_total"] == 1
 
 
 @pytest.mark.parametrize("first_stage, expected_progress", [

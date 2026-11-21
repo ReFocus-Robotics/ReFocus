@@ -80,6 +80,10 @@ class StageBalancedReward:
                 if self.refined_target in events:
                     new.add(self.refined_target)
                     reward -= per_subtask
+                    # Claim any intermediate shares that were never triggered
+                    # (e.g. pre-satisfied at window entry and never released).
+                    # Budget must equal the target subtask's original credit.
+                    new.update(set(self.milestone_shares) - {self.refined_target} - self.milestones_paid)
                 reward += per_subtask * sum(self.milestone_shares[name] for name in sorted(new))
                 self.milestones_paid.update(new)
             for name in events:

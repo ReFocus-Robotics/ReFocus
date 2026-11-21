@@ -6,7 +6,7 @@ TASK_STAGES = {
     "GetToastedBread": (("toaster_on",), ("toast_on_plate",)),
     "KettleBoiling": (("grasp_kettle",), ("kettle_on_stove",), ("kettle_on_active_burner",)),
     "LoadDishwasher": (("dish0_on_rack", "dish1_on_rack"), ("door_half_closed",), ("dishwasher_closed",)),
-    "PackIdenticalLunches": (("vegetable0_packed", "vegetable1_packed", "meat0_packed", "meat1_packed"),),
+    "PackIdenticalLunches": (("vegetable0_packed", "vegetable1_packed"), ("meat0_packed", "meat1_packed")),
     "PreSoakPan": (("water_on", "pan_in_sink", "sponge_in_sink"),),
     "PrepareCoffee": (("grasp_mug",), ("mug_at_machine",), ("machine_turned_on",)),
     "RinseSinkBasin": (("water_on",), ("washed_left", "washed_center", "washed_right")),
@@ -40,10 +40,26 @@ def get_subtask_states(env):
     # Packing uses per-object placements, so it can reuse the same two
     # receptacle checks without computing the baseline container flags.
     if task == "PackIdenticalLunches":
+        veg_in_0 = [v for v in ("vegetable0", "vegetable1")
+                    if object_utils.check_obj_in_receptacle(env, v, "tupperware0")]
+        veg_in_1 = [v for v in ("vegetable0", "vegetable1")
+                    if object_utils.check_obj_in_receptacle(env, v, "tupperware1")]
+        meat_in_0 = [m for m in ("meat0", "meat1")
+                     if object_utils.check_obj_in_receptacle(env, m, "tupperware0")]
+        meat_in_1 = [m for m in ("meat0", "meat1")
+                     if object_utils.check_obj_in_receptacle(env, m, "tupperware1")]
+        # Vegetables (and meats) are interchangeable, so progress is tracked by
+        # count across both tupperwares, not by object identity: stage 1 needs
+        # both vegetables packed (any tupperware), stage 2 then needs both
+        # meats. The env's _check_success enforces the balanced per-tupperware
+        # constraint at termination; these are intermediate progress signals.
+        veg_count = len(veg_in_0) + len(veg_in_1)
+        meat_count = len(meat_in_0) + len(meat_in_1)
         progress = {
-            f"{obj}_packed": any(object_utils.check_obj_in_receptacle(env, obj, container)
-                                 for container in ("tupperware0", "tupperware1"))
-            for obj in ("vegetable0", "vegetable1", "meat0", "meat1")
+            "vegetable0_packed": veg_count >= 1,
+            "vegetable1_packed": veg_count >= 2,
+            "meat0_packed": meat_count >= 1,
+            "meat1_packed": meat_count >= 2,
         }
         return {"progress": progress}
 
