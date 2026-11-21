@@ -81,7 +81,7 @@ bash scripts/run_rounds.sh \
   --scheduler-base-url "$SCHEDULER_BASE_URL" --scheduler-model "$SCHEDULER_MODEL"
 ~~~
 
-Training parameters live in [configs/](configs/); Scheduler options and environment variables are listed in [docs/REFOCUS.md](docs/REFOCUS.md) and [docs/SCHEDULER_COMPARISON.md](docs/SCHEDULER_COMPARISON.md).
+Training parameters live in [configs/](configs/); Scheduler options and environment variables are listed in [docs/REFOCUS.md](docs/REFOCUS.md).
 
 ## Attribution and license
 
