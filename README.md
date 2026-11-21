@@ -28,7 +28,7 @@ Install the training stack and simulator assets by following [docs/INSTALL.md](d
 
 Checkpoints:
 
-- **RoboCasa365** — a π<sub>0.5</sub> PyTorch SFT export with `robocasa365/norm_stats.json`, or train one with [launch/sft_pi05.sh](launch/sft_pi05.sh).
+- **RoboCasa365** — train a π<sub>0.5</sub> PyTorch SFT checkpoint with [launch/sft_pi05.sh](launch/sft_pi05.sh), starting from the `pi05_pretrain_human300` π<sub>0.5</sub> pretrained weights (step 75000) in the RoboCasa OpenPI checkout. The export carries `robocasa365/norm_stats.json`.
 - **LIBERO-Long** — the [RLinf π<sub>0.5</sub> LIBERO SFT checkpoint](https://huggingface.co/RLinf/RLinf-Pi05-LIBERO-130-fullshot-SFT). Set `CKPT_ROOT` to the directory that holds it.
 
 ## Training
