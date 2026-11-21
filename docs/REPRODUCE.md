@@ -17,8 +17,8 @@ produces the checkpoint referenced by `PI05_SFT_CKPT`. Use independent run
 directories for each configuration. Baseline launchers include cluster settings
 that should be adapted to the available Ray or Slurm deployment.
 
-The original baseline-specific density studies, precedence ablations,
-and LIBERO reproduction instructions are available from the pinned
-[StructRL source snapshot](https://github.com/amazon-science/StructRL/tree/6caba1f9538167e0752a7338663e45aac8df965d).
-For the ReFocus path and result boundaries see the
+LIBERO-Long baselines use the same policy and reward constants with 10-step
+action chunks and a 1024-step episode limit; run them with
+`LIBERO_REWARD_VARIANT=structrl`. The ReFocus path, including LIBERO stage
+tables and the round coordinator, is documented in
 [method and reproducibility notes](REFOCUS.md).

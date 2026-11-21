@@ -5,8 +5,8 @@ from unittest.mock import Mock
 import pytest
 
 from refocus.reward import StageBalancedReward
-from refocus.robocasa import get_subtask_states
-from structrl.rsi.reward import build_robocasa_reward, milestone_signals, validate_refinement
+from refocus.robocasa import MILESTONE_CHECKS, build_reward, get_subtask_states, milestone_signals
+from refocus.rounds.milestones import validate_refinement
 
 
 def advance(reward, *subtasks, success=False, signals=None):
@@ -15,7 +15,7 @@ def advance(reward, *subtasks, success=False, signals=None):
 
 
 def test_stage_budget_and_first_valid_completion():
-    reward = build_robocasa_reward("StoreLeftoversInBowl")
+    reward = build_reward("StoreLeftoversInBowl")
     assert advance(reward, "bowl_in_fridge")["r_total"] == 0
     assert advance(reward, "vegetable_in_bowl")["r_total"] == pytest.approx(1 / 3)
     assert advance(reward, "vegetable_in_bowl")["r_total"] == 0
@@ -118,7 +118,7 @@ def test_rejects_unverified_milestone_output(edits, error):
     ])
     config["milestones"][0].update(edits)
     with pytest.raises(ValueError, match=error):
-        validate_refinement(config, ["place"], {"objects": ["item"], "fixtures": []})
+        validate_refinement(config, ["place"], {"objects": ["item"], "fixtures": []}, MILESTONE_CHECKS)
 
 
 def test_milestone_signals_bind_to_named_simulator_entities(monkeypatch):
@@ -137,7 +137,7 @@ def test_milestone_signals_bind_to_named_simulator_entities(monkeypatch):
     ]
     entities = {"objects": ["item", "tray"], "fixtures": ["fixture"]}
     assert validate_refinement(dict(target="place", milestones=checks, final_share=0.25),
-                               ["place"], entities)
+                               ["place"], entities, MILESTONE_CHECKS)
     assert milestone_signals(env, checks) == {"pick": True, "insert": False, "store": True}
     object_utils.check_obj_grasped.assert_called_once_with(env, "item")
     object_utils.check_obj_in_receptacle.assert_called_once_with(env, "item", "tray")

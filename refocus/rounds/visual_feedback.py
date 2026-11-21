@@ -1,7 +1,6 @@
-"""Capture and package evaluation visuals for Astra without extra rendering.
+"""Package evaluation camera frames into timeline montages for the Scheduler.
 
-The frames come from the observations already produced for policy evaluation;
-this module never calls MuJoCo render().
+Frames come from observations the policy already receives; nothing is re-rendered.
 """
 from __future__ import annotations
 
@@ -11,11 +10,6 @@ from pathlib import Path
 import numpy as np
 
 
-CAMERAS = (
-    ("agentview_left", ("video.robot0_agentview_left", "robot0_agentview_left", "video.res256_image_side_0", "main_images")),
-    ("agentview_right", ("video.robot0_agentview_right", "robot0_agentview_right", "video.res256_image_side_1", "extra_view_images")),
-    ("wrist", ("video.robot0_eye_in_hand", "robot0_eye_in_hand", "video.res256_image_wrist_0", "wrist_images")),
-)
 TIMELINE_SNAPSHOTS = 16
 CAMERA_TILE = 128
 
@@ -37,19 +31,15 @@ def _lookup(observation, key):
     return None
 
 
-def _latest_rgb(value):
+def latest_rgb(value):
+    """Return the current HxWx3 uint8 frame from a frame, stack, or batch of one."""
     if value is None:
         return None
     array = _to_numpy(value)
     while array.ndim > 4 and array.shape[0] == 1:
         array = array[0]
-    if array.ndim == 4:
-        # RoboCasa observation stacks may contain T frames; the final frame is
-        # the current observation. Accept a leading batch dimension of one.
-        if array.shape[-1] in (3, 4):
-            array = array[-1]
-        elif array.shape[1] in (3, 4):
-            array = array[-1]
+    if array.ndim == 4 and (array.shape[-1] in (3, 4) or array.shape[1] in (3, 4)):
+        array = array[-1]
     if array.ndim != 3:
         return None
     if array.shape[0] in (3, 4) and array.shape[-1] not in (3, 4):
@@ -65,16 +55,15 @@ def _latest_rgb(value):
     return array
 
 
-def observation_views(observation):
+def observation_views(observation, cameras):
+    """Pick the first available key for each ``(label, keys)`` camera."""
     views = {}
-    for label, keys in CAMERAS:
-        image = None
+    for label, keys in cameras:
         for key in keys:
-            image = _latest_rgb(_lookup(observation, key))
+            image = latest_rgb(_lookup(observation, key))
             if image is not None:
+                views[label] = image
                 break
-        if image is not None:
-            views[label] = image
     return views
 
 
@@ -113,12 +102,12 @@ def should_capture(step_index: int, horizon_steps: int, count: int = TIMELINE_SN
     return step_index in targets
 
 
-def encode_snapshot(observation, control_step: int, stage_index: int):
-    """Return small JPEG byte strings; copy only 3 existing policy views."""
+def encode_snapshot(views, control_step: int, stage_index: int):
+    """Store each camera view as a small JPEG."""
     from PIL import Image
 
     result = {"control_step": int(control_step), "stage_index": int(stage_index), "views": {}}
-    for label, array in observation_views(observation).items():
+    for label, array in views.items():
         image = Image.fromarray(array).resize((CAMERA_TILE, CAMERA_TILE), Image.Resampling.BILINEAR)
         buffer = io.BytesIO()
         image.save(buffer, format="JPEG", quality=72, optimize=True)
@@ -137,7 +126,7 @@ def _font(draw):
 def build_montage(snapshots, *, task: str, update: int, success: bool,
                   episode_slot: int | None = None, episode_count: int = 5,
                   control_count: int | None = None):
-    """Build a 4x4 timeline; each time cell contains a 2x2 view panel."""
+    """Build a 4x4 timeline; each time cell is a 2x2 panel of the recorded cameras."""
     from PIL import Image, ImageDraw
 
     header_h, caption_h = 28, 22
@@ -154,24 +143,24 @@ def build_montage(snapshots, *, task: str, update: int, success: bool,
                 max((int(item.get("control_step", 0)) for item in snapshots), default=0))
     draw.text((8, 6), f"{task} | Eval update {update} | {episode}{label} | {controls} controls",
               fill=(255, 255, 255), font=font)
-    names = ("agentview_left", "agentview_right", "wrist", "Not recorded")
+    names = list(dict.fromkeys(name for item in snapshots for name in item["views"]))[:4]
     for index in range(16):
         row, col = divmod(index, 4)
         left, top = col * cell_w, header_h + row * cell_h
         snapshot = snapshots[index] if index < len(snapshots) else None
-        for panel, name in enumerate(names):
+        for panel in range(4):
             px, py = left + (panel % 2) * tile, top + (panel // 2) * tile
-            raw = snapshot["views"].get(name) if snapshot else None
+            name = names[panel] if panel < len(names) else None
+            raw = snapshot["views"].get(name) if snapshot and name else None
             if raw:
-                image = Image.open(io.BytesIO(raw)).convert("RGB")
-                canvas.paste(image, (px, py))
+                canvas.paste(Image.open(io.BytesIO(raw)).convert("RGB"), (px, py))
             else:
                 draw.rectangle((px, py, px + tile - 1, py + tile - 1), fill=(44, 44, 44))
-            draw.rectangle((px, py, px + tile - 1, py + 16), fill=(0, 0, 0))
-            draw.text((px + 3, py + 2), name, fill=(255, 255, 255), font=font)
+            if name:
+                draw.rectangle((px, py, px + tile - 1, py + 16), fill=(0, 0, 0))
+                draw.text((px + 3, py + 2), name, fill=(255, 255, 255), font=font)
         if snapshot:
-            stage = snapshot["stage_index"]
-            caption = f"step {snapshot['control_step']} | stage {stage}"
+            caption = f"step {snapshot['control_step']} | stage {snapshot['stage_index']}"
         else:
             caption = "no frame"
         draw.text((left + 4, top + panel_h + 3), caption, fill=(255, 255, 255), font=font)

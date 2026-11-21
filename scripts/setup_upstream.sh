@@ -69,6 +69,8 @@ if [ "$WITH_LIBERO" = 1 ]; then
   clone RLinf/RLinf "$RLINF_COMMIT" "$LIBERO_RL_ROOT/RLinf"
   apply_patch "$LIBERO_RL_ROOT/RLinf" rlinf_core.patch
   apply_patch "$LIBERO_RL_ROOT/RLinf" libero_addon.patch
+  # The addon patch already contains the round hooks for LIBERO.
+  touch "$LIBERO_RL_ROOT/RLinf/.refocus_round_hooks_v1"
   clone RLinf/LIBERO 0c5e40cc4ae63e09c14e7df6f74481e9ee8585f7 "$LIBERO_RL_ROOT/LIBERO"
   clone Lifelong-Robot-Learning/LIBERO 8f1084e3132a39270c3a13ebe37270a43ece2a01 "$PROJECT_ROOT/LIBERO"
 fi

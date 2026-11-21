@@ -1,4 +1,9 @@
-"""RoboCasa365 progress stages and predicates from the ReFocus appendix."""
+"""RoboCasa365 progress stages, subtask predicates, and simulator milestone checks."""
+
+import ast
+from pathlib import Path
+
+from refocus.reward import StageBalancedReward
 
 
 TASK_STAGES = {
@@ -31,35 +36,28 @@ _GRASP_PREDICATES = {
 }
 
 
+def task_name(env):
+    return type(env).__name__
+
+
 def get_subtask_states(env):
     """Evaluate the appendix DAG with the shared simulator progress checks."""
     from robocasa.utils import object_utils
     from structrl.subtask_checker import get_subtask_states as base_subtask_states
 
-    task = type(env).__name__
-    # Packing uses per-object placements, so it can reuse the same two
-    # receptacle checks without computing the baseline container flags.
+    task = task_name(env)
     if task == "PackIdenticalLunches":
-        veg_in_0 = [v for v in ("vegetable0", "vegetable1")
-                    if object_utils.check_obj_in_receptacle(env, v, "tupperware0")]
-        veg_in_1 = [v for v in ("vegetable0", "vegetable1")
-                    if object_utils.check_obj_in_receptacle(env, v, "tupperware1")]
-        meat_in_0 = [m for m in ("meat0", "meat1")
-                     if object_utils.check_obj_in_receptacle(env, m, "tupperware0")]
-        meat_in_1 = [m for m in ("meat0", "meat1")
-                     if object_utils.check_obj_in_receptacle(env, m, "tupperware1")]
-        # Vegetables (and meats) are interchangeable, so progress is tracked by
-        # count across both tupperwares, not by object identity: stage 1 needs
-        # both vegetables packed (any tupperware), stage 2 then needs both
-        # meats. The env's _check_success enforces the balanced per-tupperware
-        # constraint at termination; these are intermediate progress signals.
-        veg_count = len(veg_in_0) + len(veg_in_1)
-        meat_count = len(meat_in_0) + len(meat_in_1)
+        def packed(food, container):
+            return any(object_utils.check_obj_in_receptacle(env, f"{food}{i}", container) for i in (0, 1))
+        # Items of one kind are interchangeable. The second subtask of each
+        # stage requires one item in each tupperware, as the success check does.
+        vegetables = [packed("vegetable", c) for c in ("tupperware0", "tupperware1")]
+        meats = [packed("meat", c) for c in ("tupperware0", "tupperware1")]
         progress = {
-            "vegetable0_packed": veg_count >= 1,
-            "vegetable1_packed": veg_count >= 2,
-            "meat0_packed": meat_count >= 1,
-            "meat1_packed": meat_count >= 2,
+            "vegetable0_packed": any(vegetables),
+            "vegetable1_packed": all(vegetables),
+            "meat0_packed": any(meats),
+            "meat1_packed": all(meats),
         }
         return {"progress": progress}
 
@@ -80,3 +78,57 @@ def get_subtask_states(env):
         progress["lettuce_under_water"] = bool(env.sink.check_obj_under_water(env, "lettuce"))
         progress["wash_t10"] = env.washed_time >= 10
     return grouped
+
+
+def build_reward(task, *, success_reward=2.0):
+    return StageBalancedReward(TASK_STAGES[task], success_reward=success_reward)
+
+
+def task_evidence(task):
+    """Source of the task's StructRL subtask checker, shown to the Scheduler as evidence."""
+    path = Path(__file__).resolve().parents[1] / "structrl" / "subtask_checker.py"
+    source = path.read_text()
+    for node in ast.walk(ast.parse(source)):
+        if (isinstance(node, ast.If) and isinstance(node.test, ast.Compare)
+                and isinstance(node.test.left, ast.Name) and node.test.left.id == "cls_name"
+                and isinstance(node.test.comparators[0], ast.Constant)
+                and node.test.comparators[0].value == task):
+            return ast.get_source_segment(source, node)
+    return None
+
+
+MILESTONE_CHECKS = {
+    "object_grasped": ("The gripper holds object. Set reference to null.", None),
+    "object_in_receptacle": ("Object is in the receptacle named by reference (another object).", "objects"),
+    "object_inside_fixture": ("Object is inside the fixture named by reference.", "fixtures"),
+}
+
+
+def milestone_entities(env):
+    """Expose only exact simulator names accepted by the predicate interface."""
+    return {
+        "objects": sorted(getattr(env, "objects", {})),
+        "fixtures": sorted(
+            name for name, fixture in getattr(env, "fixtures", {}).items()
+            if getattr(fixture, "get_int_sites", None) and fixture.get_int_sites()
+        ),
+    }
+
+
+def milestone_signals(env, checks):
+    from robocasa.utils import object_utils
+
+    signals = {}
+    for item in checks:
+        check, obj, ref = item["check"], item["object"], item["reference"]
+        if check == "object_grasped":
+            satisfied = object_utils.check_obj_grasped(env, obj)
+        elif check == "object_in_receptacle":
+            satisfied = object_utils.check_obj_in_receptacle(env, obj, ref)
+        elif check == "object_inside_fixture":
+            satisfied = object_utils.obj_inside_of(env, obj, env.fixtures[ref], partial_check=False)
+        else:
+            raise ValueError("Unsupported milestone check")
+        signals[item["name"]] = bool(satisfied)
+    return signals
+

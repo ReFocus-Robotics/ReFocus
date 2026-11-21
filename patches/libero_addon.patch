@@ -1,5 +1,5 @@
 diff --git a/rlinf/algorithms/losses.py b/rlinf/algorithms/losses.py
-index d1fcdda8..351b4df4 100644
+index d1fcdda..351b4df 100644
 --- a/rlinf/algorithms/losses.py
 +++ b/rlinf/algorithms/losses.py
 @@ -370,11 +370,11 @@ def compute_ppo_critic_loss(
@@ -18,7 +18,7 @@ index d1fcdda8..351b4df4 100644
  
 diff --git a/rlinf/envs/libero/dense_reward.py b/rlinf/envs/libero/dense_reward.py
 new file mode 100644
-index 00000000..227cd042
+index 0000000..227cd04
 --- /dev/null
 +++ b/rlinf/envs/libero/dense_reward.py
 @@ -0,0 +1,486 @@
@@ -508,294 +508,230 @@ index 00000000..227cd042
 +            cumulative_outcome=self.cumulative_outcome,
 +            events=events,
 +        )
-+
-+
-+class LiberoBDDLStageReward:
-+    """Stage-balanced ReFocus reward for LIBERO, bridged to BDDL conjunct-tuple stages.
-+
-+    Converts conjunct tuples (e.g. ("turnon", "flat_stove_1")) to '::'-joined string
-+    keys so StageBalancedReward can track per-stage progress from BDDL predicate
-+    evaluations.  The per-task success_reward matches the RoboCasa365 budget (2.0).
-+    """
-+
-+    _SEP = "::"
-+
-+    @staticmethod
-+    def conjunct_key(c: tuple) -> str:
-+        return LiberoBDDLStageReward._SEP.join(str(x) for x in c)
-+
-+    def __init__(self, stages: list[list[tuple]], *, success_reward: float = 2.0):
-+        from refocus.reward import StageBalancedReward
-+        self._conj_to_key: dict[tuple, str] = {}
-+        string_stages = []
-+        for stage in stages:
-+            str_stage = []
-+            for c in stage:
-+                key = self.conjunct_key(c)
-+                self._conj_to_key[c] = key
-+                str_stage.append(key)
-+            string_stages.append(str_stage)
-+        self._reward = StageBalancedReward(string_stages, success_reward=success_reward)
-+        self.stages_template: list[list[str]] = [list(s) for s in string_stages]
-+        self.all_subtasks: set[str] = {k for s in self.stages_template for k in s}
-+
-+    def reset(self, already_true: Optional[set] = None) -> None:
-+        """Start a fresh episode.  already_true: conjuncts TRUE at reset — marked
-+        latched immediately and skipped in stage completion checks so they earn
-+        no reward and don't block subsequent stages."""
-+        self._reward.reset()
-+        if already_true:
-+            for c in already_true:
-+                key = self._conj_to_key.get(c)
-+                if key and key in self._reward.latched:
-+                    self._reward.latched[key] = True
-+            while self._reward.stage_idx < self._reward.K:
-+                stage = self._reward.stages[self._reward.stage_idx]
-+                if all(self._reward.latched.get(name, False) for name in stage):
-+                    self._reward.stage_idx += 1
-+                else:
-+                    break
-+
-+    def step(self, true_now: set, success: bool) -> dict:
-+        true_keys = {self._conj_to_key[c] for c in true_now if c in self._conj_to_key}
-+        progress = {k: (k in true_keys) for k in self.all_subtasks}
-+        result = self._reward.step({"progress": progress}, success)
-+        result["n_total"] = len(self.all_subtasks)
-+        result["n_latched"] = sum(1 for v in self._reward.latched.values() if v)
-+        return result
-+
-+    @property
-+    def stage_idx(self) -> int:
-+        return self._reward.stage_idx
-+
-+    @property
-+    def K(self) -> int:
-+        return self._reward.K
-+
-+    @property
-+    def stages(self) -> list:
-+        return self._reward.stages
-+
-+    @property
-+    def outcome_fired(self) -> bool:
-+        return self._reward.outcome_fired
-+
-+    @property
-+    def cumulative(self) -> float:
-+        return self._reward.cumulative
-+
-+    @property
-+    def cumulative_progress(self) -> float:
-+        return self._reward.cumulative_progress
-+
-+    @property
-+    def cumulative_outcome(self) -> float:
-+        return self._reward.cumulative_outcome
 diff --git a/rlinf/envs/libero/libero_env.py b/rlinf/envs/libero/libero_env.py
+index 23c9945..d71831f 100644
 --- a/rlinf/envs/libero/libero_env.py
 +++ b/rlinf/envs/libero/libero_env.py
-@@ -388,6 +388,16 @@ class LiberoEnv(gym.Env):
+@@ -173,6 +173,9 @@ class LiberoEnv(gym.Env):
+ 
+                 env = WorkerEnv(**param)
+                 env.seed(seed)
++                for key in ("_round_eval", "_round_task", "_round_slot", "_round_replicas"):
++                    if key in param:
++                        setattr(env, key, param.pop(key))
+                 return env
+ 
+             env_fns.append(env_fn)
+@@ -346,6 +349,12 @@ class LiberoEnv(gym.Env):
+                     **base_env_args,
+                     "bddl_file_name": final_path,
+                     "seed": self.seed,
++                    "_round_eval": bool(getattr(self.cfg, "is_eval", False)),
++                    "_round_task": file_name.replace(".bddl", ""),
++                    "_round_slot": env_id,
++                    "_round_replicas": max(
++                        1, int(self.cfg.total_num_envs) // max(1, self.task_suite.get_num_tasks())
++                    ),
+                 }
+             )
+             task_descriptions.append(task.language)
+@@ -389,6 +398,13 @@ class LiberoEnv(gym.Env):
          else:
              self._valid_reset_state_ids = None
-
-+        # Seed separation: optional config fields restrict the train/eval pools
-+        # to non-overlapping subsets of the official 50 initial states per task.
-+        # train_reset_state_ids selects the per-task trial indices used during
-+        # training; eval_reset_state_ids selects the pool used during dev eval.
-+        # Neither field is required; when absent the full pool is used as before.
-+        # Set test_reset_state_ids (or leave unset to use all 50) for final eval.
+ 
++        # Optional seed separation: eval_reset_state_ids / train_reset_state_ids
++        # restrict each mode to a subset of the official per-task initial states.
 +        split_key = "eval_reset_state_ids" if self.cfg.is_eval else "train_reset_state_ids"
 +        split_ids = self.cfg.get(split_key, None)
 +        if split_ids is not None:
 +            self._valid_reset_state_ids = np.array(list(split_ids), dtype=int)
 +
- diff --git a/rlinf/envs/libero/venv.py b/rlinf/envs/libero/venv.py
-index acf4862d..9450a019 100644
+     def update_reset_state_ids(self):
+         if self.cfg.is_eval or self.cfg.use_ordered_reset_state_ids:
+             reset_state_ids = self._get_ordered_reset_state_ids(self.num_group)
+@@ -657,6 +673,8 @@ class LiberoEnv(gym.Env):
+         self.current_raw_obs = raw_obs
+         infos = list_of_dict_to_dict_of_list(info_lists)
+         truncations = self.elapsed_steps >= self.cfg.max_episode_steps
++        if "rounds_truncated" in infos:
++            truncations = truncations | np.asarray(infos["rounds_truncated"], dtype=bool)
+         obs = self._wrap_obs(raw_obs)
+ 
+         step_reward = self._calc_step_reward(terminations)
+diff --git a/rlinf/envs/libero/venv.py b/rlinf/envs/libero/venv.py
+index acf4862..eb87ce2 100644
 --- a/rlinf/envs/libero/venv.py
 +++ b/rlinf/envs/libero/venv.py
-@@ -97,6 +97,143 @@ def _worker( 
+@@ -97,6 +97,139 @@ def _worker(
+ 
      parent.close()
      env = env_fn_wrapper.data()
-+    # ---- Dense BDDL-milestone reward (Phase 2), fully gated --------------
-+    # Computed here in the env subprocess (the inner sim / _eval_predicate
-+    # live in THIS process). Injected as info["dense_reward"]; env_worker
-+    # swaps it into chunk_rewards only when env.train.dense_reward.enabled.
-+    # Gated by LIBERO_DENSE_REWARD=1 so the sparse job (which never sets it)
-+    # pays zero overhead and sees identical behavior.
++    # ---- Dense BDDL-milestone reward and practice rounds (gated) ----------
++    # Computed in the env subprocess, where the simulator and _eval_predicate live.
++    # Injected as info["dense_reward"]; env_worker swaps it into chunk_rewards only
++    # when env.train.dense_reward.enabled. LIBERO_REWARD_VARIANT selects "flat"
++    # (0.3 per subtask), "smooth_band" (StructRL timing), or "refocus"
++    # (stage-balanced ReFocus reward from the ReFocus repository).
 +    import os as _os
 +    _dense_on = _os.environ.get("LIBERO_DENSE_REWARD", "0").strip() == "1"
-+    # Reward variant (LIBERO_REWARD_VARIANT): "flat" (default) pays 0.3 per
-+    # completed subtask; "smooth_band" is the StructRL timing-shaped reward;
-+    # "refocus" is the stage-balanced ReFocus reward matching RoboCasa365.
-+    _reward_variant = _os.environ.get(
-+        "LIBERO_REWARD_VARIANT", "flat"
-+    ).strip().lower()
-+    _reward_variant = {"structrl": "smooth_band", "fixed": "flat"}.get(
-+        _reward_variant, _reward_variant)
-+    _dense = {"reward": None, "sig": None, "inner": None, "err": False,
-+              "is_timed": False}
++    _reward_variant = _os.environ.get("LIBERO_REWARD_VARIANT", "flat").strip().lower()
++    _reward_variant = {"structrl": "smooth_band", "fixed": "flat"}.get(_reward_variant, _reward_variant)
++    _dense = {"reward": None, "sig": None, "inner": None, "err": False, "is_timed": False}
++
++    def _rounds_task(inner):
++        from pathlib import Path
++        return Path(inner.bddl_file_name).stem
 +
 +    def _dense_setup():
-+        """(Re)build + reset the dense reward for the current episode/task.
-+        Call after the sim is in its init state (set_init_state)."""
++        """Build and reset the reward for the episode the simulator just reset into."""
 +        if not _dense_on:
 +            return
-+        try:
-+            from rlinf.envs.libero.dense_reward import (
-+                LiberoDenseReward,
-+                LiberoSmoothBandReward,
-+                LiberoBDDLStageReward,
-+                eval_conjuncts_true,
-+                get_rank_budgets,
-+                get_stage_def,
-+                goal_signature,
-+                unwrap_inner,
-+            )
-+            inner = unwrap_inner(env)
-+            if inner is None:
-+                return
-+            goal_state = inner.parsed_problem["goal_state"]
-+            sig = goal_signature(goal_state)
-+            is_timed = _reward_variant == "smooth_band"
-+            if _dense["reward"] is None or _dense["sig"] != sig:
++        from rlinf.envs.libero.dense_reward import (
++            LiberoDenseReward, LiberoSmoothBandReward, eval_conjuncts_true,
++            get_rank_budgets, get_stage_def, goal_signature, unwrap_inner,
++        )
++        inner = unwrap_inner(env)
++        if inner is None:
++            return
++        goal_state = inner.parsed_problem["goal_state"]
++        sig = goal_signature(goal_state)
++        is_timed = _reward_variant == "smooth_band"
++        if _dense["reward"] is None or _dense["sig"] != sig:
++            if _reward_variant == "refocus":
++                from refocus.libero import build_reward
++                _dense["reward"] = build_reward(_rounds_task(inner))
++            else:
 +                stage_def = get_stage_def(goal_state)
 +                if stage_def is None:
 +                    _dense["reward"] = None
 +                    _dense["sig"] = sig
 +                    _dense["inner"] = inner
 +                    return
-+                if _reward_variant == "refocus":
-+                    _dense["reward"] = LiberoBDDLStageReward(stage_def)
-+                elif is_timed:
-+                    _dense["reward"] = LiberoSmoothBandReward(stage_def)
-+                else:
-+                    _dense["reward"] = LiberoDenseReward(stage_def)
-+                _dense["sig"] = sig
-+                _dense["is_timed"] = is_timed
-+            _dense["inner"] = inner
-+            # Conjuncts already true at reset → dropped (criterion ③).
++                _dense["reward"] = (LiberoSmoothBandReward(stage_def) if is_timed
++                                    else LiberoDenseReward(stage_def))
++            _dense["sig"] = sig
++            _dense["is_timed"] = is_timed
++        _dense["inner"] = inner
++        all_conj = set()
++        for stage in _dense["reward"].stages_template:
++            all_conj.update(stage)
++        already = eval_conjuncts_true(inner, all_conj)
++        if _reward_variant == "refocus":
++            _dense["reward"].reset()
++            for item in already:
++                key = "::".join(str(x) for x in item)
++                if key in _dense["reward"].latched:
++                    _dense["reward"].latched[key] = True
++        elif is_timed:
++            _dense["reward"].reset(already_true=already, rank_budgets=get_rank_budgets(goal_state))
++        else:
++            _dense["reward"].reset(already_true=already)
++
++    def _reward_step():
++        """Advance the reward once for the current simulator state."""
++        rw, inner = _dense["reward"], _dense["inner"]
++        if rw is None or inner is None:
++            return 0.0, 0.0, 0.0, 0.0
++        success = bool(inner._check_success())
++        if _reward_variant == "refocus":
++            from refocus.libero import get_subtask_states
++            from refocus.rounds.libero_codec import milestone_signals
++            signals = (milestone_signals(inner, rw.milestone_checks)
++                       if getattr(rw, "refined_target", None) is not None else None)
++            tinfo = rw.step(get_subtask_states(inner, _rounds_task(inner)), success, signals=signals)
++        elif _dense["is_timed"]:
++            from rlinf.envs.libero.dense_reward import eval_conjuncts_true
 +            all_conj = set()
-+            for s in _dense["reward"].stages_template:
-+                all_conj.update(s)
-+            already = eval_conjuncts_true(inner, all_conj)
-+            if _reward_variant == "refocus":
-+                _dense["reward"].reset(already_true=already)
-+            elif is_timed:
-+                # Post-drop rank budgets for this task (from demo-timing JSON);
-+                # None falls back to per-class neutral default inside reset.
-+                budgets = get_rank_budgets(goal_state)
-+                _dense["reward"].reset(already_true=already, rank_budgets=budgets)
-+            else:
-+                _dense["reward"].reset(already_true=already)
-+        except Exception as _e:
-+            if not _dense["err"]:
-+                import sys as _sys
-+                import traceback as _tb
-+                print(f"[libero dense_reward] setup error: {type(_e).__name__}: {_e}",
-+                      file=_sys.stderr, flush=True)
-+                _tb.print_exc()
-+                _dense["err"] = True
++            for stage in rw.stages_template:
++                all_conj.update(stage)
++            tinfo = rw.step(eval_conjuncts_true(inner, all_conj), success,
++                            sim_t=int(getattr(inner, "timestep", 0)))
++        else:
++            from rlinf.envs.libero.dense_reward import eval_conjuncts_true
++            all_conj = set()
++            for stage in rw.stages_template:
++                all_conj.update(stage)
++            tinfo = rw.step(eval_conjuncts_true(inner, all_conj), success)
++        return (float(tinfo["r_total"]), float(tinfo["r_event"]), float(tinfo["r_outcome"]),
++                float(tinfo["cumulative"]))
 +
 +    def _dense_step_inject(info):
-+        # When dense is on, ALWAYS write the full key set (0.0 fallback on any
-+        # failure / unknown task), so list_of_dict_to_dict_of_list in the main
-+        # process sees a consistent key set across all envs and env_worker can
-+        # index info["dense_reward"][env_idx] for every env (RC365 invariant).
++        # Always write the full key set so every env reports the same keys.
 +        if not _dense_on:
 +            return info
 +        if not isinstance(info, dict):
 +            info = dict(info) if info else {}
-+        r_total = r_event = r_outcome = 0.0
-+        n_done = n_total = n_latched = 0
-+        cum = 0.0
-+        latched_outcome = 0
++        r_total = r_event = r_outcome = cum = 0.0
++        rw = _dense["reward"]
 +        try:
-+            rw = _dense["reward"]
-+            inner = _dense["inner"]
-+            if rw is not None and inner is not None:
-+                from rlinf.envs.libero.dense_reward import eval_conjuncts_true
-+                all_conj = set()
-+                for s in rw.stages_template:
-+                    all_conj.update(s)
-+                true_now = eval_conjuncts_true(inner, all_conj)
-+                success = bool(inner._check_success())
-+                if _dense["is_timed"]:
-+                    # smooth_band needs the REAL sim-step counter (budgets are
-+                    # in demo sim-frame units). inner.timestep advances once per
-+                    # env.step = once per worker "step" cmd, same unit as the
-+                    # demo replay used by extract_libero_demo_timing.py.
-+                    sim_t = None
-+                    try:
-+                        sim_t = int(getattr(inner, "timestep"))
-+                    except Exception:
-+                        sim_t = None
-+                    tinfo = rw.step(true_now, success, sim_t=sim_t)
-+                else:
-+                    tinfo = rw.step(true_now, success)
-+                r_total = float(tinfo["r_total"])
-+                r_event = float(tinfo["r_event"])
-+                r_outcome = float(tinfo["r_outcome"])
-+                n_done = int(tinfo["stage_idx_after"])
-+                n_total = int(tinfo["n_total"])
-+                n_latched = int(tinfo["n_latched"])
-+                cum = float(tinfo["cumulative"])
-+                latched_outcome = 1 if (tinfo["r_outcome"] > 0 or rw.outcome_fired) else 0
++            r_total, r_event, r_outcome, cum = _reward_step()
 +        except Exception as _e:
 +            if not _dense["err"]:
 +                import sys as _sys
-+                import traceback as _tb
-+                print(f"[libero dense_reward] step error: {type(_e).__name__}: {_e}",
-+                      file=_sys.stderr, flush=True)
-+                _tb.print_exc()
++                print(f"[libero dense_reward] step error: {type(_e).__name__}: {_e}", file=_sys.stderr, flush=True)
 +                _dense["err"] = True
++        n_latched = sum(1 for v in getattr(rw, "latched", {}).values() if v) if rw is not None else 0
 +        info["dense_reward"] = r_total
 +        info["dense_reward_progress"] = r_event
 +        info["dense_reward_outcome"] = r_outcome
-+        info["dense_reward_n_done"] = n_done
-+        info["dense_reward_n_total"] = n_total
 +        info["dense_reward_inst"] = cum
 +        info["dense_reward_latched_n_done"] = n_latched
-+        info["dense_reward_latched_outcome"] = latched_outcome
++        info["dense_reward_latched_outcome"] = 1 if (rw is not None and rw.outcome_fired) else 0
 +        return info
++
++    def _step_once(data):
++        env_return = env.step(data)
++        if _dense_on:
++            _er = list(env_return)
++            _er[-1] = _dense_step_inject(_er[-1])
++            env_return = tuple(_er)
++        return env_return
++
++    def _reset_once(data):
++        obs = env.reset(**data)
++        _dense_setup()
++        return obs
++
++    import os
++    recorder = None
++    if _os.environ.get("STRUCTRL_ROUNDS_ROOT"):
++        from refocus.rounds import libero_codec
++        from refocus.rounds.recorder import Recorder
++        recorder = Recorder(env, _reset_once, _step_once, lambda: _dense["reward"], libero_codec)
 +
      try:
          while True:
              try:
-@@ -106,6 +243,12 @@ def _worker(
+@@ -105,13 +238,13 @@ def _worker(
+                 p.close()
                  break
              if cmd == "step":
-                 env_return = env.step(data)
-+                if _dense_on:
-+                    # env.step -> (obs, reward, done, info). Inject dense reward
-+                    # into info before obs is stripped for shared-mem encode.
-+                    _er = list(env_return)
-+                    _er[-1] = _dense_step_inject(_er[-1])
-+                    env_return = tuple(_er)
+-                env_return = env.step(data)
++                env_return = recorder.step(data) if recorder else _step_once(data)
                  if obs_bufs is not None:
                      _encode_obs(env_return[0], obs_bufs)
                      env_return = (None, *env_return[1:])
-@@ -152,12 +295,19 @@ def _worker(
-                 p.send(env.get_sim_state())
-             elif cmd == "set_init_state":
-                 obs = env.set_init_state(data)
-+                # Episode start: sim is now in its init state, so (re)build and
-+                # reset the dense reward here (drops conjuncts already true).
-+                _dense_setup()
-                 p.send(obs)
-             elif cmd == "reconfigure":
-                 env.close()
+                 p.send(env_return)
+             elif cmd == "reset":
+-                retval = env.reset(**data)
++                retval = recorder.reset(data) if recorder else _reset_once(data)
+                 reset_returns_info = (
+                     isinstance(retval, (tuple, list))
+                     and len(retval) == 2
+@@ -158,6 +291,11 @@ def _worker(
                  seed = data.pop("seed")
                  env = OffScreenRenderEnv(**data)
                  env.seed(seed)
-+                # Task may have changed → force a rebuild on next set_init_state.
 +                _dense["reward"] = None
 +                _dense["sig"] = None
 +                _dense["inner"] = None
++                if recorder is not None:
++                    recorder.env = env
                  p.send(None)
              else:
                  p.close()
 diff --git a/rlinf/hybrid_engines/fsdp/strategy/checkpoint.py b/rlinf/hybrid_engines/fsdp/strategy/checkpoint.py
-index 7f198b9f..1099e76e 100644
+index 7f198b9..1099e76 100644
 --- a/rlinf/hybrid_engines/fsdp/strategy/checkpoint.py
 +++ b/rlinf/hybrid_engines/fsdp/strategy/checkpoint.py
 @@ -12,6 +12,7 @@
@@ -901,10 +837,10 @@ index 7f198b9f..1099e76e 100644
              set_state_dict(
                  model=self.model,
 diff --git a/rlinf/workers/actor/fsdp_actor_worker.py b/rlinf/workers/actor/fsdp_actor_worker.py
-index 3f0af75f..4879e33c 100644
+index 107245a..c1c5de2 100644
 --- a/rlinf/workers/actor/fsdp_actor_worker.py
 +++ b/rlinf/workers/actor/fsdp_actor_worker.py
-@@ -1873,7 +1873,14 @@ class EmbodiedFSDPActor(FSDPModelManager, Worker):
+@@ -1481,7 +1481,14 @@ class EmbodiedFSDPActor(FSDPModelManager, Worker):
          self.lr_scheduler.step()
          self.optimizer.zero_grad()
          clear_memory()

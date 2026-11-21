@@ -39,8 +39,8 @@ conda activate refocus
 
 ### Data and checkpoints
 
-- **RoboCasa365.** Prepare the [simulation assets](docs/INSTALL.md#download-simulator-assets-and-prepare-the-checkpoint), the [demonstration dataset](https://robocasa.ai/docs/build/html/datasets/using_datasets.html) and pretrained [π<sub>0.5</sub> weights](https://huggingface.co/robocasa/robocasa365_checkpoints/tree/main/pi05_pretrain_human300/multitask_learning/75000).
-- **LIBERO-Long.** Prepare the [LIBERO simulator assets and benchmark initial states](https://github.com/RLinf/LIBERO) and the [RLinf π<sub>0.5</sub> LIBERO SFT checkpoint](https://huggingface.co/RLinf/RLinf-Pi05-LIBERO-130-fullshot-SFT).
+- **RoboCasa365.** Prepare the [simulation assets](docs/INSTALL.md#download-simulator-assets-and-prepare-the-checkpoint), the [demonstration dataset](https://robocasa.ai/docs/build/html/datasets/using_datasets.html) and pretrained [π<sub>0.5</sub> weights](https://huggingface.co/robocasa/robocasa365_checkpoints/tree/main/pi05_pretrain_human300/multitask_learning/75000). RL starts from a π<sub>0.5</sub> PyTorch SFT checkpoint with `robocasa365/norm_stats.json`.
+- **LIBERO-Long.** Prepare the [LIBERO simulator assets and benchmark initial states](https://github.com/RLinf/LIBERO) and the [RLinf π<sub>0.5</sub> LIBERO SFT checkpoint](https://huggingface.co/RLinf/RLinf-Pi05-LIBERO-130-fullshot-SFT). Set `CKPT_ROOT` to the directory that holds it.
 
 <a name="training"></a>
 
@@ -53,46 +53,70 @@ conda activate refocus
 
 ### 2. ReFocus post-training
 
-The commands below run ReFocus on LIBERO-Long and RoboCasa365.
+The coordinator runs the first Global phase, asks the Scheduler for one practice window per task, runs the Local phase from that choice, then repeats. Every phase resumes the actor, critic, and optimizer of the previous one. The commands below cover both benchmarks.
 
-#### Configure both Ray nodes
+#### RoboCasa365 on two 8-GPU Ray nodes
 
-Activate the environment and run these commands from the repository root on each node. Replace the checkpoint and head IP with your own values.
+Run these commands from the repository root on each node. Replace the checkpoint and head IP with your own values.
 
 ~~~bash
 conda activate refocus
 export VENV="$CONDA_PREFIX"
 export PI05_SFT_CKPT=/path/to/robocasa365-pytorch-sft-checkpoint
 export RAY_HEAD_IP=10.0.0.10
-source examples/robocasa365/rlinf/rsi_env.sh
+source examples/robocasa365/rlinf/round_env.sh
 export RAY_ADDRESS="$RAY_HEAD_IP:$RAY_PORT"
 ~~~
-
-#### Install the hooks and start Ray
 
 Install the hooks once in the shared RLinf checkout, before starting Ray.
 
 ~~~bash
-python scripts/install_rsi_hooks.py "$RLINF_ROOT"
+python scripts/install_round_hooks.py "$RLINF_ROOT"
 ~~~
 
 For Robocasa365, run `bash examples/robocasa365/rlinf/ray_head_8gpu.sh` on the head node and
 `bash examples/robocasa365/rlinf/ray_worker_8gpu.sh` on the worker node.
 
-#### Launch ReFocus on the head node
-
-Set `ADVISOR_API_KEY`, `ADVISOR_BASE_URL`, and `ADVISOR_MODEL` on the head node after Ray starts. The endpoint needs to accept image inputs for the visual Scheduler. See the [Scheduler setup](docs/ADVISOR_COMPARISON.md) for provider-specific settings.
+Set `SCHEDULER_API_KEY`, `SCHEDULER_BASE_URL`, and `SCHEDULER_MODEL` on the head node after Ray starts. The endpoint needs to accept image inputs for the visual Scheduler. See the [Scheduler setup](docs/SCHEDULER_COMPARISON.md) for provider-specific settings.
 
 ~~~bash
-bash scripts/run_robocasa_rsi.sh \
-  --rlinf-root "$RLINF_ROOT" --run-root "$STRUCTRL_RSI_ROOT" \
-  --advisor-provider openai-compatible \
-  --advisor-base-url "$ADVISOR_BASE_URL" --advisor-model "$ADVISOR_MODEL"
+bash scripts/run_rounds.sh \
+  --benchmark robocasa365 \
+  --rlinf-root "$RLINF_ROOT" --run-root "$STRUCTRL_ROUNDS_ROOT" \
+  --scheduler-provider openai-compatible \
+  --scheduler-base-url "$SCHEDULER_BASE_URL" --scheduler-model "$SCHEDULER_MODEL"
 ~~~
 
-The [training configuration](configs/robocasa365_ppo_openpi_pi05_refocus_16gpu.yaml) uses **256 training environments**, a **global batch of 512**, and a **microbatch of 32 per GPU**. The coordinator runs three rounds of 25 Global and 25 Local PPO updates. At each diagnostic checkpoint, it evaluates five normal-start episodes per task. Outputs are written to `$STRUCTRL_RSI_ROOT`.
+The [training configuration](configs/robocasa365_ppo_openpi_pi05_refocus_16gpu.yaml) uses **256 training environments**, a **global batch of 512**, and a **microbatch of 32 per GPU**. Three rounds of 25 Global and 25 Local PPO updates are run. At each diagnostic checkpoint the coordinator evaluates five normal-start episodes per task. Outputs are written to `$STRUCTRL_ROUNDS_ROOT`.
 
-The Scheduler can return simulator-checkable milestones with each practice window. Local RL applies valid refinements automatically. See the [Scheduler milestone interface](docs/REFOCUS.md#scheduler-milestone-interface).
+#### LIBERO-Long on one 8-GPU host
+
+`scripts/setup_upstream.sh --libero` creates a second RLinf checkout with the LIBERO hooks, in `$LIBERO_RL_ROOT`. Export these variables before starting Ray so every worker inherits them:
+
+~~~bash
+export STRUCTRL_ROUNDS_ROOT=/path/to/libero-run
+export LIBERO_RL_ROOT=/path/to/libero_rl
+export CKPT_ROOT=/path/to/ckpts
+export LIBERO_DENSE_REWARD=1
+export LIBERO_REWARD_VARIANT=refocus
+export STRUCTRL_REWARD_VARIANT=refocus
+~~~
+
+Then launch the coordinator against the LIBERO checkout:
+
+~~~bash
+bash scripts/run_rounds.sh \
+  --benchmark libero_10 \
+  --rlinf-root "$LIBERO_RL_ROOT/RLinf" --run-root "$STRUCTRL_ROUNDS_ROOT" \
+  --scheduler-provider openai-compatible \
+  --scheduler-base-url "$SCHEDULER_BASE_URL" --scheduler-model "$SCHEDULER_MODEL"
+~~~
+
+The [LIBERO configuration](configs/libero_10_ppo_openpi_pi05_refocus.yaml) uses **64 training environments**, a **global batch of 512**, 10-step action chunks, and a 1024-step episode limit. LIBERO entries are restored by replaying their recorded action prefix rather than by a state snapshot, so a Local rollout costs its prefix again. The optional `train_reset_state_ids` and `eval_reset_state_ids` config fields split the 50 official initial states of each task into non-overlapping training and development pools.
+
+#### Practice windows and milestones
+
+The Scheduler can return simulator-checkable milestones with each practice window. Local RL applies valid refinements automatically and otherwise keeps the original progress reward. See the [Scheduler milestone interface](docs/REFOCUS.md#scheduler-milestone-interface).
 
 <a name="repository-structure"></a>
 
@@ -100,11 +124,12 @@ The Scheduler can return simulator-checkable milestones with each practice windo
 
 | Path | Purpose |
 | --- | --- |
-| [`refocus/`](refocus/) | Stage-balanced progress and milestone rewards |
-| [`structrl/rsi/`](structrl/rsi/) | Training coordinator, Scheduler integration, and snapshot restoration |
+| [`refocus/reward.py`](refocus/reward.py) | Stage-balanced progress reward and milestone budgets |
+| [`refocus/robocasa.py`](refocus/robocasa.py), [`refocus/libero.py`](refocus/libero.py) | Per-benchmark stage tables, subtask predicates, and milestone checks |
+| [`refocus/rounds/`](refocus/rounds/) | Round coordinator, Scheduler client, recorders, and entry restoration |
 | [`configs/`](configs/) | Hydra training and simulator configurations |
-| [`scripts/`](scripts/) | Upstream setup, hook installation, and training entry points |
-| [`examples/robocasa365/`](examples/robocasa365/) | Ray launch scripts |
+| [`scripts/`](scripts/) | Upstream setup, hook installation, and the round launcher |
+| [`examples/robocasa365/`](examples/robocasa365/) | Ray launch scripts and the worker environment file |
 | [`docs/`](docs/) | [Installation guide](docs/INSTALL.md), [method notes](docs/REFOCUS.md), and [StructRL baselines](docs/REPRODUCE.md) |
 
 <a name="attribution-and-license"></a>
