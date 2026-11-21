@@ -22,6 +22,11 @@ def views(observation):
     return observation_views(observation, CAMERAS)
 
 
+def seed(env, seed):
+    """LIBERO resets from stored initial states; seed its placement generator."""
+    np.random.seed(seed)
+
+
 def capture(env):
     """LIBERO rebuilds its scene on reset, so entries replay their actions instead."""
     return None

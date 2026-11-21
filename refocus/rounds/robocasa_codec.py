@@ -1,10 +1,12 @@
 """RoboCasa365 codec: direct MuJoCo snapshots and simulator milestone checks."""
 
+import random
+
+import numpy as np
+
 from refocus import robocasa
 from refocus.rounds import robocasa_snapshot
 from refocus.rounds.recorder import canonical_scene_xml, leaf
-
-import numpy as np
 
 CAMERAS = (
     ("agentview_left", ("video.robot0_agentview_left", "robot0_agentview_left", "video.res256_image_side_0", "main_images")),
@@ -20,6 +22,15 @@ milestone_checks = robocasa.MILESTONE_CHECKS
 def views(observation):
     from refocus.rounds.visual_feedback import observation_views
     return observation_views(observation, CAMERAS)
+
+
+def seed(env, seed):
+    """Seed the robosuite generator and the legacy global generators."""
+    inner = leaf(env)
+    if hasattr(inner, 'rng'):
+        inner.rng = np.random.default_rng(seed)
+    random.seed(seed)
+    np.random.seed(seed)
 
 
 def capture(env):

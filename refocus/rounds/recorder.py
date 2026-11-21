@@ -82,13 +82,8 @@ class Recorder:
         self.rng = np.random.default_rng(1234 + self.slot)
 
     def seeded_reset(self, kwargs):
-        # The wrapper seeds legacy np.random but not robosuite's Generator.
-        seed = int(kwargs['seed'])
-        inner = leaf(self.env)
-        if hasattr(inner, 'rng'):
-            inner.rng = np.random.default_rng(seed)
-        random.seed(seed)
-        np.random.seed(seed)
+        # Seed through the codec so reset kwargs stay benchmark-native.
+        self.codec.seed(self.env, int(self.seed))
         return self.raw_reset(copy.deepcopy(kwargs))
 
     def _sample_entry(self, window):
@@ -112,7 +107,7 @@ class Recorder:
             raise RuntimeError('Unsupported entry format; start a new run to collect entries')
         if (entry['mode'] != 'train' or entry['task'] != self.task
                 or entry['stage'] != window['start_stage'] or entry['round'] != self.control['round']
-                or entry['reset_kwargs']['seed'] != seed or entry['entry_steps'] != steps):
+                or entry['seed'] != seed or entry['entry_steps'] != steps):
             raise RuntimeError('Invalid training entry provenance')
         if self.entry_attempt_id is not None and entry.get('phase_attempt_id') != self.entry_attempt_id:
             raise RuntimeError('Training entry came from a different Global attempt')
@@ -213,8 +208,8 @@ class Recorder:
         else:
             seed = 100 + self.slot + (self.resets + 10000 * self.control['update']) * self.replicas
             self.resets += 1
-            self.reset_kwargs = copy.deepcopy(entry['reset_kwargs']) if entry else dict(kwargs, seed=seed)
-            self.seed = self.reset_kwargs['seed']
+            self.reset_kwargs = copy.deepcopy(entry['reset_kwargs']) if entry else dict(kwargs)
+            self.seed = seed
             if entry:
                 obs, info = self._restore_entry(entry)
                 self.restoration_seconds = time.perf_counter() - restoration_started
@@ -272,7 +267,8 @@ class Recorder:
                     self.entries[stage] = dict(
                         mode='train', task=self.task, stage=stage, round=self.control['round'],
                         source_update=self.control['update'], stage_signature=self.signature,
-                        phase_attempt_id=self.phase_attempt_id, reset_kwargs=copy.deepcopy(self.reset_kwargs),
+                        phase_attempt_id=self.phase_attempt_id, seed=self.seed,
+                        reset_kwargs=copy.deepcopy(self.reset_kwargs),
                         entry_steps=self.steps, actions=copy.deepcopy(self.action_prefix),
                         scene=self.codec.scene_id(self.env), snapshot=self.codec.capture(self.env),
                         reward_type=type(rw).__name__, reward_state=copy.deepcopy(vars(rw)),
@@ -338,7 +334,7 @@ class Recorder:
             if len(list(folder.glob(entry_pattern(self.phase_attempt_id, self.slot)))) >= 4:
                 continue
             prefix = f'{self.slot}_{self.phase_attempt_id}' if self.phase_attempt_id else str(self.slot)
-            target = folder / f"{prefix}_{entry['reset_kwargs']['seed']}_{entry['entry_steps']}_{token}.pkl"
+            target = folder / f"{prefix}_{entry['seed']}_{entry['entry_steps']}_{token}.pkl"
             tmp = target.with_suffix('.tmp')
             tmp.write_bytes(pickle.dumps(entry))
             os.replace(tmp, target)

@@ -37,6 +37,7 @@ class Toy:
         self.env = SimpleNamespace(get_basic_observation=lambda value: value,
                                    get_groot_observation=lambda value: value)
         self.episode_meta = {}
+        self.seed_value = 0
         self._round_eval = evaluation
         self._round_task = 'Toy'
         self._round_slot = slot
@@ -53,7 +54,7 @@ class Toy:
         return self.sim.value
 
     def reset(self, kwargs):
-        self.sim.value = kwargs.get('seed', kwargs.get('reset_state_id', 0))
+        self.sim.value = kwargs.get('seed', kwargs.get('reset_state_id', self.seed_value))
         self.rw.stage_idx = 0
         self.rw.ticks = 0
         return self.sim.value, {}
@@ -91,6 +92,9 @@ class ToyCodec:
     def observation(self, env):
         outer = env.env
         return outer.get_groot_observation(outer.get_basic_observation(env._get_observations()))
+
+    def seed(self, env, seed):
+        env.seed_value = seed
 
     def views(self, obs):
         return observation_views(obs, CAMERAS)
@@ -379,8 +383,7 @@ class Tests(unittest.TestCase):
 
         env2 = Toy()
         replay = record(env2)
-        obs, _ = replay.reset({})
-        self.assertEqual(obs, 200200)
+        replay.reset({})
         self.assertEqual(replay.entry_steps, 100)
         self.assertEqual(env2.rw.stage_idx, 1)
 

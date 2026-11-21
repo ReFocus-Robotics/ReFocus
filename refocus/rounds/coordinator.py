@@ -59,8 +59,8 @@ def main():
         raise ValueError('updates-per-phase must be divisible by eval-interval')
     if args.save_interval < 1 or args.updates_per_phase % args.save_interval:
         raise ValueError('updates-per-phase must be divisible by save-interval')
-    if horizon < chunk or horizon % chunk:
-        raise ValueError(f'horizon must be a positive multiple of the {chunk}-action chunk')
+    if horizon < chunk:
+        raise ValueError('horizon must be at least one action chunk')
     if any(not math.isfinite(weight) or weight < 0 for weight in args.local_mix) or abs(sum(args.local_mix) - 1.0) > 1e-6:
         raise ValueError('local-mix must be three nonnegative probabilities summing to one')
     plan = phase_plan(args.rounds, args.updates_per_phase)
@@ -171,10 +171,13 @@ def main():
         if args.eval_envs is not None:
             cmd.append(f'env.eval.total_num_envs={args.eval_envs}')
         if horizon != benchmark.horizon:
+            # RLinf collects whole action chunks, so the rollout budget is rounded
+            # up while the episode limit keeps the requested value.
+            rollout = -(-horizon // chunk) * chunk
             cmd.extend([f'env.train.max_episode_steps={horizon}',
-                        f'env.train.max_steps_per_rollout_epoch={horizon}',
+                        f'env.train.max_steps_per_rollout_epoch={rollout}',
                         f'env.eval.max_episode_steps={horizon}',
-                        f'env.eval.max_steps_per_rollout_epoch={horizon}'])
+                        f'env.eval.max_steps_per_rollout_epoch={rollout}'])
         cmd.extend(args.hydra_override)
         if prior:
             cmd.append(f'runner.resume_dir={prior}')

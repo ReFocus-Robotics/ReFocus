@@ -1,5 +1,5 @@
 diff --git a/examples/embodiment/eval_embodiment.sh b/examples/embodiment/eval_embodiment.sh
-index 01cc4039..7a52f9e0 100644
+index 01cc403..7a52f9e 100644
 --- a/examples/embodiment/eval_embodiment.sh
 +++ b/examples/embodiment/eval_embodiment.sh
 @@ -4,8 +4,8 @@ export EMBODIED_PATH="$( cd "$(dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -14,7 +14,7 @@ index 01cc4039..7a52f9e0 100644
  
  # Base path to the BEHAVIOR dataset, which is the BEHAVIOR-1k repo's dataset folder
 diff --git a/rlinf/config.py b/rlinf/config.py
-index 428ed853..9b9765ed 100644
+index 428ed85..9b9765e 100644
 --- a/rlinf/config.py
 +++ b/rlinf/config.py
 @@ -89,6 +89,7 @@ SupportedModel.OPENPI = SupportedModel.register("openpi", force=True)
@@ -34,7 +34,7 @@ index 428ed853..9b9765ed 100644
          SupportedModel.DEXBOTIC_DM0,
          SupportedModel.DREAMZERO,
 diff --git a/rlinf/data/embodied_io_struct.py b/rlinf/data/embodied_io_struct.py
-index 74c2b4ae..7080b0ac 100644
+index 74c2b4a..7080b0a 100644
 --- a/rlinf/data/embodied_io_struct.py
 +++ b/rlinf/data/embodied_io_struct.py
 @@ -109,13 +109,27 @@ class EnvOutput:
@@ -124,7 +124,7 @@ index 74c2b4ae..7080b0ac 100644
              trajectory.forward_inputs = stack_list_of_dict_tensor(self.forward_inputs)
              for key in trajectory.forward_inputs.keys():
 diff --git a/rlinf/envs/__init__.py b/rlinf/envs/__init__.py
-index bfb5ea1c..cfe35c40 100644
+index bfb5ea1..cfe35c4 100644
 --- a/rlinf/envs/__init__.py
 +++ b/rlinf/envs/__init__.py
 @@ -24,6 +24,7 @@ class SupportedEnvType(Enum):
@@ -147,7 +147,7 @@ index bfb5ea1c..cfe35c40 100644
          from rlinf.envs.realworld import RealWorldEnv
  
 diff --git a/rlinf/envs/action_utils.py b/rlinf/envs/action_utils.py
-index 87ce3372..73d731a0 100644
+index 87ce337..73d731a 100644
 --- a/rlinf/envs/action_utils.py
 +++ b/rlinf/envs/action_utils.py
 @@ -273,6 +273,10 @@ def prepare_actions(
@@ -162,7 +162,7 @@ index 87ce3372..73d731a0 100644
          chunk_actions = raw_chunk_actions
      elif env_type == SupportedEnvType.FRANKASIM:
 diff --git a/rlinf/envs/robocasa/robocasa_env.py b/rlinf/envs/robocasa/robocasa_env.py
-index d0038518..36141866 100644
+index d003851..3614186 100644
 --- a/rlinf/envs/robocasa/robocasa_env.py
 +++ b/rlinf/envs/robocasa/robocasa_env.py
 @@ -93,11 +93,19 @@ class RobocasaEnv(gym.Env):
@@ -212,7 +212,7 @@ index d0038518..36141866 100644
  
 diff --git a/rlinf/envs/robocasa365/__init__.py b/rlinf/envs/robocasa365/__init__.py
 new file mode 100644
-index 00000000..5b365ea1
+index 0000000..5b365ea
 --- /dev/null
 +++ b/rlinf/envs/robocasa365/__init__.py
 @@ -0,0 +1,13 @@
@@ -231,7 +231,7 @@ index 00000000..5b365ea1
 +# limitations under the License.
 diff --git a/rlinf/envs/robocasa365/robocasa365_env.py b/rlinf/envs/robocasa365/robocasa365_env.py
 new file mode 100644
-index 00000000..18505cfe
+index 0000000..18505cf
 --- /dev/null
 +++ b/rlinf/envs/robocasa365/robocasa365_env.py
 @@ -0,0 +1,318 @@
@@ -555,7 +555,7 @@ index 00000000..18505cfe
 +        return obs
 diff --git a/rlinf/envs/robocasa365/venv.py b/rlinf/envs/robocasa365/venv.py
 new file mode 100644
-index 00000000..2469bc1a
+index 0000000..2469bc1
 --- /dev/null
 +++ b/rlinf/envs/robocasa365/venv.py
 @@ -0,0 +1,368 @@
@@ -928,7 +928,7 @@ index 00000000..2469bc1a
 +        done = np.logical_or(terminated, truncated)
 +        return obs, reward, done, info
 diff --git a/rlinf/models/__init__.py b/rlinf/models/__init__.py
-index 275b3e1c..978ce3ee 100644
+index 275b3e1..978ce3e 100644
 --- a/rlinf/models/__init__.py
 +++ b/rlinf/models/__init__.py
 @@ -81,6 +81,11 @@ def _register_builtin_models():
@@ -957,7 +957,7 @@ index 275b3e1c..978ce3ee 100644
          SupportedModel.CNN_POLICY.value,
          _build_cnn_policy,
 diff --git a/rlinf/models/embodiment/gr00t/__init__.py b/rlinf/models/embodiment/gr00t/__init__.py
-index ee7bb248..3dac7292 100644
+index ee7bb24..3dac729 100644
 --- a/rlinf/models/embodiment/gr00t/__init__.py
 +++ b/rlinf/models/embodiment/gr00t/__init__.py
 @@ -47,6 +47,10 @@ def get_model(cfg: DictConfig, torch_dtype=torch.bfloat16):
@@ -972,7 +972,7 @@ index ee7bb248..3dac7292 100644
          raise ValueError(f"Invalid embodiment tag: {cfg.embodiment_tag}")
      modality_config = data_config.modality_config()
 diff --git a/rlinf/models/embodiment/gr00t/embodiment_tags.py b/rlinf/models/embodiment/gr00t/embodiment_tags.py
-index b160ebb8..c75ba132 100644
+index b160ebb..c75ba13 100644
 --- a/rlinf/models/embodiment/gr00t/embodiment_tags.py
 +++ b/rlinf/models/embodiment/gr00t/embodiment_tags.py
 @@ -47,6 +47,11 @@ class EmbodimentTag(Enum):
@@ -994,7 +994,7 @@ index b160ebb8..c75ba132 100644
 +    EmbodimentTag.NEW_EMBODIMENT.value: 31,
  }
 diff --git a/rlinf/models/embodiment/gr00t/gr00t_action_model.py b/rlinf/models/embodiment/gr00t/gr00t_action_model.py
-index e145c3b2..5b8f6b4d 100644
+index e145c3b..942809a 100644
 --- a/rlinf/models/embodiment/gr00t/gr00t_action_model.py
 +++ b/rlinf/models/embodiment/gr00t/gr00t_action_model.py
 @@ -108,6 +108,7 @@ class FlowMatchingActionHeadForRLActionPrediction(FlowmatchingActionHead):
@@ -1091,16 +1091,17 @@ index e145c3b2..5b8f6b4d 100644
              chains_values = chains_values[:, None]
          else:
              chains_values = torch.zeros(
-@@ -393,7 +412,7 @@ class FlowMatchingActionHeadForRLActionPrediction(FlowmatchingActionHead):
+@@ -393,8 +412,8 @@ class FlowMatchingActionHeadForRLActionPrediction(FlowmatchingActionHead):
              device=device,
          )
  
 -    def get_value(self, vl_embs, state_features):
-+    def get_value(self, vl_embs, state_features, vl_attn_mask=None):
 -        # TODO: add value vlm mode param
++    def get_value(self, vl_embs, state_features, vl_attn_mask=None):
 +        # Select the prefix by value_vlm_mode.
          bsize = vl_embs.shape[0]
          mask_length = vl_embs.shape[1]
+         if self.rl_config.value_vlm_mode == "mean_token":
 @@ -404,7 +423,12 @@ class FlowMatchingActionHeadForRLActionPrediction(FlowmatchingActionHead):
          elif self.rl_config.value_vlm_mode == "first_token":
              prefix_mask = [True] * 1 + [False] * (mask_length - 1)
@@ -1176,14 +1177,7 @@ index e145c3b2..5b8f6b4d 100644
      def default_forward(
          self,
          forward_inputs: dict[str, torch.Tensor],
-@@ -567,6 +642,15 @@ class GR00T_N1_5_ForRLActionPrediction(GR00T_N1_5, BasePolicy):
-         mode: Literal["train", "eval"] = "train",
-         **kwargs,
-     ) -> tuple[torch.Tensor, dict[str, Any]]:
-         # Here we have a source causing tiny inference-training inconsistency,
-         # force convert the state to bf16 then back to float32 to reproduce the info loss in training.
-         env_obs["states"] = env_obs["states"].to(torch.bfloat16)
-@@ -591,6 +675,11 @@ class GR00T_N1_5_ForRLActionPrediction(GR00T_N1_5, BasePolicy):
+@@ -591,6 +666,11 @@ class GR00T_N1_5_ForRLActionPrediction(GR00T_N1_5, BasePolicy):
              if normalized_input[key].dtype == torch.float32:
                  normalized_input[key] = normalized_input[key].to(torch.bfloat16)
  
@@ -1195,14 +1189,7 @@ index e145c3b2..5b8f6b4d 100644
          normalized_input["eagle_input_ids"] = torch.nn.functional.pad(
              normalized_input["eagle_input_ids"],
              pad=(0, self.padding_value - normalized_input["eagle_input_ids"].shape[-1]),
-@@ -617,6 +706,6 @@ class GR00T_N1_5_ForRLActionPrediction(GR00T_N1_5, BasePolicy):
-             unnormalized_action, chunk_size=self.output_action_chunks
-         )
-
-         return torch.from_numpy(raw_action), result
- 
-     def apply_transforms(self, obs: dict[str, Any]) -> dict[str, Any]:
-@@ -654,7 +758,10 @@ class GR00T_N1_5_ForRLActionPrediction(GR00T_N1_5, BasePolicy):
+@@ -654,7 +734,10 @@ class GR00T_N1_5_ForRLActionPrediction(GR00T_N1_5, BasePolicy):
          # Because the behavior of backbones remains the same for training and inference, we can use `forward` for backbones.
          backbone_outputs = self.backbone(backbone_inputs)
          action_head_outputs, rlinf_outputs = self.action_head.get_rl_action(
@@ -1215,7 +1202,7 @@ index e145c3b2..5b8f6b4d 100644
          actions = rlinf_outputs["actions"]
          self.validate_data(action_head_outputs, backbone_outputs, is_training=False)
 diff --git a/rlinf/models/embodiment/gr00t/modality_config.py b/rlinf/models/embodiment/gr00t/modality_config.py
-index 91ea7533..00c56d6b 100644
+index 91ea753..00c56d6 100644
 --- a/rlinf/models/embodiment/gr00t/modality_config.py
 +++ b/rlinf/models/embodiment/gr00t/modality_config.py
 @@ -90,6 +90,103 @@ class ManiskillWidowXDataConfig(BaseDataConfig):
@@ -1324,7 +1311,7 @@ index 91ea7533..00c56d6b 100644
          "video.image",
 diff --git a/rlinf/models/embodiment/gr00t/sft_data_config.py b/rlinf/models/embodiment/gr00t/sft_data_config.py
 new file mode 100644
-index 00000000..63b9c922
+index 0000000..63b9c92
 --- /dev/null
 +++ b/rlinf/models/embodiment/gr00t/sft_data_config.py
 @@ -0,0 +1,53 @@
@@ -1382,13 +1369,14 @@ index 00000000..63b9c922
 +        "action.control_mode": "binary",
 +    }
 diff --git a/rlinf/models/embodiment/gr00t/simulation_io.py b/rlinf/models/embodiment/gr00t/simulation_io.py
-index 0c68a57d..fd099792 100644
+index 0c68a57..9a0c0dd 100644
 --- a/rlinf/models/embodiment/gr00t/simulation_io.py
 +++ b/rlinf/models/embodiment/gr00t/simulation_io.py
 @@ -139,17 +139,99 @@ def convert_to_isaaclab_stack_cube_action(
      return action_array
  
  
+-# TODO: we need a unified embodiement data.
 +def convert_robocasa365_obs_to_gr00t_format(env_obs):
 +    """Convert the RLinf flat obs contract into GR00T modality keys for the
 +    RoboCasa365 PandaOmron checkpoint (embodiment_tag=new_embodiment).
@@ -1469,7 +1457,6 @@ index 0c68a57d..fd099792 100644
 +    return action_array
 +
 +
--# TODO: we need a unified embodiement data.
 +# Observation converters are registered per embodiment.
  OBS_CONVERSION = {
      "maniskill": convert_maniskill_obs_to_gr00t_format,
@@ -1487,7 +1474,7 @@ index 0c68a57d..fd099792 100644
  
  
 diff --git a/rlinf/models/embodiment/openpi/dataconfig/__init__.py b/rlinf/models/embodiment/openpi/dataconfig/__init__.py
-index b00a32a8..aa2111c5 100644
+index b00a32a..aa2111c 100644
 --- a/rlinf/models/embodiment/openpi/dataconfig/__init__.py
 +++ b/rlinf/models/embodiment/openpi/dataconfig/__init__.py
 @@ -59,6 +59,9 @@ from rlinf.models.embodiment.openpi.dataconfig.realworld_dataconfig import (
@@ -1545,7 +1532,7 @@ index b00a32a8..aa2111c5 100644
          model=pi0_config.Pi0Config(
 diff --git a/rlinf/models/embodiment/openpi/dataconfig/robocasa365_dataconfig.py b/rlinf/models/embodiment/openpi/dataconfig/robocasa365_dataconfig.py
 new file mode 100644
-index 00000000..a77c504d
+index 0000000..a77c504
 --- /dev/null
 +++ b/rlinf/models/embodiment/openpi/dataconfig/robocasa365_dataconfig.py
 @@ -0,0 +1,73 @@
@@ -1624,7 +1611,7 @@ index 00000000..a77c504d
 +        )
 diff --git a/rlinf/models/embodiment/openpi/policies/robocasa365_policy.py b/rlinf/models/embodiment/openpi/policies/robocasa365_policy.py
 new file mode 100644
-index 00000000..ac95f89c
+index 0000000..ac95f89
 --- /dev/null
 +++ b/rlinf/models/embodiment/openpi/policies/robocasa365_policy.py
 @@ -0,0 +1,151 @@
@@ -1781,7 +1768,7 @@ index 00000000..ac95f89c
 +        return {"actions": np.asarray(data["actions"][:, :ROBOCASA365_ACTION_DIM])}
 diff --git a/rlinf/models/embodiment/rldx1/__init__.py b/rlinf/models/embodiment/rldx1/__init__.py
 new file mode 100644
-index 00000000..16e1b4b5
+index 0000000..16e1b4b
 --- /dev/null
 +++ b/rlinf/models/embodiment/rldx1/__init__.py
 @@ -0,0 +1,102 @@
@@ -1889,7 +1876,7 @@ index 00000000..16e1b4b5
 +    return adapter
 diff --git a/rlinf/models/embodiment/rldx1/rldx1_action_model.py b/rlinf/models/embodiment/rldx1/rldx1_action_model.py
 new file mode 100644
-index 00000000..da72817f
+index 0000000..da72817
 --- /dev/null
 +++ b/rlinf/models/embodiment/rldx1/rldx1_action_model.py
 @@ -0,0 +1,326 @@
@@ -2221,7 +2208,7 @@ index 00000000..da72817f
 +        return torch.from_numpy(raw_action), result
 diff --git a/rlinf/models/embodiment/rldx1/rldx1_rl_head.py b/rlinf/models/embodiment/rldx1/rldx1_rl_head.py
 new file mode 100644
-index 00000000..0df34fc6
+index 0000000..0df34fc
 --- /dev/null
 +++ b/rlinf/models/embodiment/rldx1/rldx1_rl_head.py
 @@ -0,0 +1,311 @@
@@ -2538,7 +2525,7 @@ index 00000000..0df34fc6
 +        return log_probs, values
 diff --git a/rlinf/models/embodiment/rldx1/simulation_io.py b/rlinf/models/embodiment/rldx1/simulation_io.py
 new file mode 100644
-index 00000000..fbd7339f
+index 0000000..fbd7339
 --- /dev/null
 +++ b/rlinf/models/embodiment/rldx1/simulation_io.py
 @@ -0,0 +1,144 @@
@@ -2687,7 +2674,7 @@ index 00000000..fbd7339f
 +    )
 +    return action_array
 diff --git a/rlinf/utils/metric_utils.py b/rlinf/utils/metric_utils.py
-index fa513722..dd99b5ec 100644
+index fa51372..dd99b5e 100644
 --- a/rlinf/utils/metric_utils.py
 +++ b/rlinf/utils/metric_utils.py
 @@ -150,6 +150,39 @@ def compute_rollout_metrics(data_buffer: dict) -> dict:
@@ -2763,7 +2750,7 @@ index fa513722..dd99b5ec 100644
  
  
 diff --git a/rlinf/workers/actor/fsdp_actor_worker.py b/rlinf/workers/actor/fsdp_actor_worker.py
-index 107245a8..3f0af75f 100644
+index 107245a..6187d51 100644
 --- a/rlinf/workers/actor/fsdp_actor_worker.py
 +++ b/rlinf/workers/actor/fsdp_actor_worker.py
 @@ -749,6 +749,23 @@ class FSDPActor(FSDPModelManager, Worker):
@@ -2822,15 +2809,7 @@ index 107245a8..3f0af75f 100644
  
          # create weight syncer
          weight_syncer_cfg = OmegaConf.select(cfg, "weight_syncer")
-@@ -1214,6 +1256,6 @@ class EmbodiedFSDPActor(FSDPModelManager, Worker):
-         if kwargs["loss_mask_sum"] is not None:
-             self.rollout_batch.update({"loss_mask_sum": kwargs["loss_mask_sum"]})
-
-
-         rollout_metrics = compute_rollout_metrics(self.rollout_batch)
-         return rollout_metrics
- 
-@@ -1247,35 +1370,189 @@ class EmbodiedFSDPActor(FSDPModelManager, Worker):
+@@ -1247,35 +1289,189 @@ class EmbodiedFSDPActor(FSDPModelManager, Worker):
              self.sft_iterator = iter(self.data_loader)
              self.train_epoch = 0
              self.sft_loss_weight = self.cfg.actor.get("sft_loss_weight", 0.1)
@@ -3038,7 +3017,7 @@ index 107245a8..3f0af75f 100644
  
          metrics_data["loss_ratio"] = (
              np.abs(metrics_data["sft_loss"]) / np.abs(metrics_data["ppo_loss"])
-@@ -1291,6 +1568,106 @@ class EmbodiedFSDPActor(FSDPModelManager, Worker):
+@@ -1291,6 +1487,106 @@ class EmbodiedFSDPActor(FSDPModelManager, Worker):
                  f"sft_loss_weight={self.sft_loss_weight:.6f}"
              )
  
@@ -3145,7 +3124,7 @@ index 107245a8..3f0af75f 100644
      @Worker.timer("run_training")
      def run_training(self) -> None:
          """
-@@ -1302,12 +1679,23 @@ class EmbodiedFSDPActor(FSDPModelManager, Worker):
+@@ -1302,12 +1598,23 @@ class EmbodiedFSDPActor(FSDPModelManager, Worker):
              self.load_optimizer(self.device)
  
          self.model.train()
@@ -3169,7 +3148,7 @@ index 107245a8..3f0af75f 100644
          shuffle_id = torch.randperm(rollout_size, generator=g)
  
          with torch.no_grad():
-@@ -1386,9 +1774,9 @@ class EmbodiedFSDPActor(FSDPModelManager, Worker):
+@@ -1386,9 +1693,9 @@ class EmbodiedFSDPActor(FSDPModelManager, Worker):
                              self.cfg.algorithm.sampling_params.temperature_train
                          )
                          kwargs["top_k"] = self.cfg.algorithm.sampling_params.top_k
@@ -3182,7 +3161,7 @@ index 107245a8..3f0af75f 100644
                      ):
                          kwargs["prev_logprobs"] = prev_logprobs
  
-@@ -1406,9 +1794,9 @@ class EmbodiedFSDPActor(FSDPModelManager, Worker):
+@@ -1406,9 +1713,9 @@ class EmbodiedFSDPActor(FSDPModelManager, Worker):
                              **kwargs,
                          )
  
@@ -3195,7 +3174,7 @@ index 107245a8..3f0af75f 100644
                      ):
                          prev_logprobs = output_dict["prev_logprobs"]
  
-@@ -1455,7 +1843,11 @@ class EmbodiedFSDPActor(FSDPModelManager, Worker):
+@@ -1455,7 +1762,11 @@ class EmbodiedFSDPActor(FSDPModelManager, Worker):
                      metrics_data["actor/entropy_loss"] = entropy_loss.detach().item()
  
                      if self.enable_sft_co_train:
@@ -3209,7 +3188,7 @@ index 107245a8..3f0af75f 100644
                      loss /= self.gradient_accumulation
                      with backward_ctx:
 diff --git a/rlinf/workers/env/env_worker.py b/rlinf/workers/env/env_worker.py
-index c2f8acb9..a6062c7e 100644
+index c2f8acb..a6062c7 100644
 --- a/rlinf/workers/env/env_worker.py
 +++ b/rlinf/workers/env/env_worker.py
 @@ -169,6 +169,36 @@ class EnvWorker(Worker):
@@ -3578,7 +3557,7 @@ index c2f8acb9..a6062c7e 100644
                      self.rollout_results[stage_id].append_step_result(chunk_step_result)
                      if (
 diff --git a/rlinf/workers/rollout/hf/huggingface_worker.py b/rlinf/workers/rollout/hf/huggingface_worker.py
-index ea603e85..524e78f3 100644
+index ea603e8..524e78f 100644
 --- a/rlinf/workers/rollout/hf/huggingface_worker.py
 +++ b/rlinf/workers/rollout/hf/huggingface_worker.py
 @@ -260,6 +260,7 @@ class MultiStepRolloutWorker(Worker):
@@ -3591,7 +3570,7 @@ index ea603e85..524e78f3 100644
              SupportedModel.CFG_MODEL,
 diff --git a/scripts/patch_modality_rotation.py b/scripts/patch_modality_rotation.py
 new file mode 100644
-index 00000000..9db91c2a
+index 0000000..9db91c2
 --- /dev/null
 +++ b/scripts/patch_modality_rotation.py
 @@ -0,0 +1,64 @@
@@ -3661,7 +3640,7 @@ index 00000000..9db91c2a
 +    main()
 diff --git a/tools/verify_done_shift.py b/tools/verify_done_shift.py
 new file mode 100644
-index 00000000..6a61c471
+index 0000000..8f886df
 --- /dev/null
 +++ b/tools/verify_done_shift.py
 @@ -0,0 +1,112 @@
