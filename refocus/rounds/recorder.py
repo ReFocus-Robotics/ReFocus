@@ -121,7 +121,10 @@ class Recorder:
             if 'episode_meta' in data and hasattr(inner, 'set_ep_meta'):
                 inner.set_ep_meta(copy.deepcopy(data['episode_meta']))
             try:
-                _, info = self.seeded_reset(self.reset_kwargs)
+                reset_kwargs = copy.deepcopy(self.reset_kwargs)
+                if "round_settle_action" in reset_kwargs:
+                    reset_kwargs["round_snapshot_reset"] = True
+                _, info = self.seeded_reset(reset_kwargs)
                 self.codec.restore(inner, data)
                 saved = entry['scene']
                 if self.codec.scene_id(self.env) != saved:
@@ -212,7 +215,7 @@ class Recorder:
             seed = 100 + self.slot + (self.resets + 10000 * self.control['update']) * self.replicas
             self.resets += 1
             self.reset_kwargs = copy.deepcopy(entry['reset_kwargs']) if entry else dict(kwargs)
-            self.seed = seed
+            self.seed = int(entry["seed"]) if entry else seed
             if entry:
                 obs, info = self._restore_entry(entry)
                 self.restoration_seconds = time.perf_counter() - restoration_started

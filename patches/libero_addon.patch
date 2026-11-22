@@ -509,20 +509,22 @@ index 0000000..227cd04
 +            events=events,
 +        )
 diff --git a/rlinf/envs/libero/libero_env.py b/rlinf/envs/libero/libero_env.py
-index 23c9945..d71831f 100644
 --- a/rlinf/envs/libero/libero_env.py
 +++ b/rlinf/envs/libero/libero_env.py
-@@ -173,6 +173,9 @@ class LiberoEnv(gym.Env):
+@@ -171,8 +171,12 @@
+                 else:
+                     from libero.libero.envs import OffScreenRenderEnv as WorkerEnv
  
++                round_keys = ("_round_eval", "_round_task", "_round_slot", "_round_replicas")
++                metadata = {key: param.pop(key) for key in round_keys}
                  env = WorkerEnv(**param)
                  env.seed(seed)
-+                for key in ("_round_eval", "_round_task", "_round_slot", "_round_replicas"):
-+                    if key in param:
-+                        setattr(env, key, param.pop(key))
++                for key, value in metadata.items():
++                    setattr(env, key, value)
                  return env
  
              env_fns.append(env_fn)
-@@ -346,6 +349,12 @@ class LiberoEnv(gym.Env):
+@@ -346,6 +350,12 @@
                      **base_env_args,
                      "bddl_file_name": final_path,
                      "seed": self.seed,
@@ -535,7 +537,7 @@ index 23c9945..d71831f 100644
                  }
              )
              task_descriptions.append(task.language)
-@@ -389,6 +398,13 @@ class LiberoEnv(gym.Env):
+@@ -389,6 +399,13 @@
          else:
              self._valid_reset_state_ids = None
  
@@ -549,7 +551,56 @@ index 23c9945..d71831f 100644
      def update_reset_state_ids(self):
          if self.cfg.is_eval or self.cfg.use_ordered_reset_state_ids:
              reset_state_ids = self._get_ordered_reset_state_ids(self.num_group)
-@@ -657,6 +673,8 @@ class LiberoEnv(gym.Env):
+@@ -600,16 +617,21 @@
+             env_fn_params = self.get_env_fn_params(reconfig_env_idx)
+             self.env.reconfigure_env_fns(env_fn_params, reconfig_env_idx)
+         self.env.seed(self.seed * len(env_idx))
+-        self.env.reset(id=env_idx)
+         variant = os.environ.get(
+             "LIBERO_TYPE",
+             self.cfg.get("libero_variant", "standard")
+             if hasattr(self.cfg, "get")
+             else "standard",
+         )
++        init_states = self._get_reset_states(env_idx=env_idx) if variant != "plus" else [None] * len(env_idx)
++        if os.environ.get("STRUCTRL_ROUNDS_ROOT"):
++            action = np.zeros(7)
++            if self.cfg.reset_gripper_open:
++                action[-1] = -1
++            return self.env.reset_rounds(init_states, action, id=env_idx)
++        self.env.reset(id=env_idx)
+         if variant != "plus":
+-            init_state = self._get_reset_states(env_idx=env_idx)
+-            self.env.set_init_state(init_state=init_state, id=env_idx)
++            self.env.set_init_state(init_state=init_states, id=env_idx)
+ 
+     def reset(
+         self,
+@@ -629,14 +651,15 @@
+             num_reset_states = len(env_idx)
+             reset_state_ids = self._get_random_reset_state_ids(num_reset_states)
+ 
+-        self._reconfigure(reset_state_ids, env_idx)
+-        for _ in range(15):
+-            zero_actions = np.zeros((len(env_idx), 7))
+-            if self.cfg.reset_gripper_open:
+-                zero_actions[:, -1] = -1
+-            raw_obs, _reward, terminations, info_lists = self.env.step(
+-                zero_actions, env_idx
+-            )
++        raw_obs = self._reconfigure(reset_state_ids, env_idx)
++        if raw_obs is None:
++            for _ in range(15):
++                zero_actions = np.zeros((len(env_idx), 7))
++                if self.cfg.reset_gripper_open:
++                    zero_actions[:, -1] = -1
++                raw_obs, _reward, terminations, info_lists = self.env.step(
++                    zero_actions, env_idx
++                )
+         if self.current_raw_obs is None:
+             self.current_raw_obs = [None] * self.num_envs
+         for i, idx in enumerate(env_idx):
+@@ -657,6 +680,8 @@
          self.current_raw_obs = raw_obs
          infos = list_of_dict_to_dict_of_list(info_lists)
          truncations = self.elapsed_steps >= self.cfg.max_episode_steps
@@ -559,10 +610,9 @@ index 23c9945..d71831f 100644
  
          step_reward = self._calc_step_reward(terminations)
 diff --git a/rlinf/envs/libero/venv.py b/rlinf/envs/libero/venv.py
-index acf4862..eb87ce2 100644
 --- a/rlinf/envs/libero/venv.py
 +++ b/rlinf/envs/libero/venv.py
-@@ -97,6 +97,139 @@ def _worker(
+@@ -97,6 +97,163 @@
  
      parent.close()
      env = env_fn_wrapper.data()
@@ -612,20 +662,24 @@ index acf4862..eb87ce2 100644
 +            _dense["sig"] = sig
 +            _dense["is_timed"] = is_timed
 +        _dense["inner"] = inner
-+        all_conj = set()
-+        for stage in _dense["reward"].stages_template:
-+            all_conj.update(stage)
-+        already = eval_conjuncts_true(inner, all_conj)
++        reward = _dense["reward"]
 +        if _reward_variant == "refocus":
-+            _dense["reward"].reset()
-+            for item in already:
-+                key = "::".join(str(x) for x in item)
-+                if key in _dense["reward"].latched:
-+                    _dense["reward"].latched[key] = True
-+        elif is_timed:
-+            _dense["reward"].reset(already_true=already, rank_budgets=get_rank_budgets(goal_state))
++            from refocus.libero import get_subtask_states
++            reward.reset()
++            progress = get_subtask_states(inner, _rounds_task(inner))["progress"]
++            for name in reward.latched:
++                reward.latched[name] = bool(progress.get(name, False))
++            while reward.stage_idx < reward.K and all(
++                reward.latched[name] for name in reward.stages[reward.stage_idx]
++            ):
++                reward.stage_idx += 1
++            return
++        all_conj = set().union(*reward.stages_template)
++        already = eval_conjuncts_true(inner, all_conj)
++        if is_timed:
++            reward.reset(already_true=already, rank_budgets=get_rank_budgets(goal_state))
 +        else:
-+            _dense["reward"].reset(already_true=already)
++            reward.reset(already_true=already)
 +
 +    def _reward_step():
 +        """Advance the reward once for the current simulator state."""
@@ -688,26 +742,52 @@ index acf4862..eb87ce2 100644
 +        return env_return
 +
 +    def _reset_once(data):
-+        obs = env.reset(**data)
++        kwargs = dict(data)
++        init_state = kwargs.pop("round_init_state", None)
++        settle_action = kwargs.pop("round_settle_action", None)
++        restoring = kwargs.pop("round_snapshot_reset", False)
++        retval = env.reset(**kwargs)
++        if recorder is None:
++            _dense_setup()
++            return retval
++        obs, info = retval if isinstance(retval, tuple) else (retval, {})
++        if init_state is not None:
++            obs = env.set_init_state(init_state)
++        if settle_action is not None and not restoring:
++            for _ in range(15):
++                obs = env.step(settle_action)[0]
 +        _dense_setup()
-+        return obs
++        return obs, info
++
++    def _record_step(data):
++        legacy = _step_once(data)
++        if len(legacy) == 4:
++            obs, reward, done, info = legacy
++            return obs, reward, done, False, info
++        return legacy
 +
 +    import os
 +    recorder = None
 +    if _os.environ.get("STRUCTRL_ROUNDS_ROOT"):
 +        from refocus.rounds import libero_codec
 +        from refocus.rounds.recorder import Recorder
-+        recorder = Recorder(env, _reset_once, _step_once, lambda: _dense["reward"], libero_codec)
++        recorder = Recorder(env, _reset_once, _record_step, lambda: _dense["reward"], libero_codec)
 +
      try:
          while True:
              try:
-@@ -105,13 +238,13 @@ def _worker(
+@@ -105,13 +262,19 @@
                  p.close()
                  break
              if cmd == "step":
 -                env_return = env.step(data)
-+                env_return = recorder.step(data) if recorder else _step_once(data)
++                if recorder is None:
++                    env_return = _step_once(data)
++                else:
++                    obs, reward, terminated, truncated, info = recorder.step(data)
++                    if truncated:
++                        info["rounds_truncated"] = True
++                    env_return = (obs, reward, terminated, info)
                  if obs_bufs is not None:
                      _encode_obs(env_return[0], obs_bufs)
                      env_return = (None, *env_return[1:])
@@ -718,18 +798,49 @@ index acf4862..eb87ce2 100644
                  reset_returns_info = (
                      isinstance(retval, (tuple, list))
                      and len(retval) == 2
-@@ -158,6 +291,11 @@ def _worker(
+@@ -154,10 +317,22 @@
+                 obs = env.set_init_state(data)
+                 p.send(obs)
+             elif cmd == "reconfigure":
++                if recorder is not None:
++                    recorder.finish()
+                 env.close()
                  seed = data.pop("seed")
++                round_keys = ("_round_eval", "_round_task", "_round_slot", "_round_replicas")
++                metadata = {key: data.pop(key) for key in round_keys}
                  env = OffScreenRenderEnv(**data)
                  env.seed(seed)
++                for key, value in metadata.items():
++                    setattr(env, key, value)
 +                _dense["reward"] = None
 +                _dense["sig"] = None
 +                _dense["inner"] = None
 +                if recorder is not None:
 +                    recorder.env = env
++                    recorder.task = env._round_task
                  p.send(None)
              else:
                  p.close()
+@@ -201,6 +376,19 @@
+ 
+         BaseVectorEnv.__init__(self, env_fns, worker_fn, **kwargs)
+ 
++    def reset_rounds(self, initial_states, settle_action, id=None):
++        self._assert_is_not_closed()
++        ids = self._wrap_id(id)
++        if self.is_async:
++            self._assert_id(ids)
++        workers = [self.workers[i] for i in ids]
++        for worker, state in zip(workers, initial_states, strict=True):
++            worker.parent_remote.send(["reset", {
++                "round_init_state": state,
++                "round_settle_action": settle_action,
++            }])
++        return [worker.parent_remote.recv()[0] for worker in workers]
++
+     def reconfigure_env_fns(self, env_fns, id=None):
+         self._assert_is_not_closed()
+         id = self._wrap_id(id)
 diff --git a/rlinf/hybrid_engines/fsdp/strategy/checkpoint.py b/rlinf/hybrid_engines/fsdp/strategy/checkpoint.py
 index 7f198b9..1099e76 100644
 --- a/rlinf/hybrid_engines/fsdp/strategy/checkpoint.py

@@ -330,7 +330,7 @@ class Tests(unittest.TestCase):
                 patch.object(recorder, 'raw_reset', wraps=recorder.raw_reset) as reset:
             obs, _ = recorder.reset({})
             step.assert_not_called()
-            reset.assert_called_once()
+            reset.assert_called_once_with({'seed': 200100})
         self.assertEqual(obs, 200200)
         self.assertEqual(recorder.entry_steps, 100)
         self.assertEqual(recorder.reward().ticks, 100)

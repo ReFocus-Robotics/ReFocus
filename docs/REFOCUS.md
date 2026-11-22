@@ -39,10 +39,10 @@ raw Scheduler replies are kept alongside it.
 (default 0.50 / 0.25 / 0.25). A task with no eligible window falls back to a
 normal-start full-task rollout.
 
-RoboCasa365 restores an entry by rebuilding the scene and restoring MuJoCo
-integration state, controllers, observables and RNG. LIBERO rebuilds the scene
-and replays the recorded action prefix, so a Local rollout costs its prefix
-again. Elapsed controls shorten the remaining horizon in both cases.
+RoboCasa365 and LIBERO restore saved MuJoCo integration state, controller
+state, observables, and RNG. The worker rebuilds the entry's scene using the
+source seed. Restoring a snapshot executes no prefix actions. The entry's
+elapsed controls still shorten the remaining episode horizon.
 
 ## Environment variables
 
