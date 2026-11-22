@@ -1,10 +1,11 @@
-"""LIBERO codec: scene identity from the initial state, replay-based restoration."""
+"""LIBERO codec: direct MuJoCo snapshots for mid-trajectory restore."""
 
 from pathlib import Path
 
 import numpy as np
 
 from refocus import libero
+from refocus.rounds import libero_snapshot
 from refocus.rounds.recorder import leaf
 from refocus.rounds.visual_feedback import observation_views
 
@@ -14,7 +15,7 @@ CAMERAS = (
 )
 CAMERA_NAMES = tuple(label for label, _ in CAMERAS)
 default_horizon = 1024
-direct_restore = False
+direct_restore = True
 milestone_checks = libero.MILESTONE_CHECKS
 
 
@@ -33,12 +34,12 @@ def reset_payload(kwargs, seed):
 
 
 def capture(env):
-    """LIBERO rebuilds its scene on reset, so entries replay their actions instead."""
-    return None
+    return libero_snapshot.capture(leaf(env))
 
 
 def restore(env, snapshot):
-    raise RuntimeError('LIBERO entries are restored by action replay')
+    # env is already the leaf (recorder passes leaf(self.env))
+    libero_snapshot.restore(env, snapshot)
 
 
 def scene_id(env):

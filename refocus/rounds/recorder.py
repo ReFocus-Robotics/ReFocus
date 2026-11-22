@@ -118,7 +118,8 @@ class Recorder:
         data = entry['snapshot']
         if data is not None:
             inner = leaf(self.env)
-            inner.set_ep_meta(copy.deepcopy(data['episode_meta']))
+            if 'episode_meta' in data and hasattr(inner, 'set_ep_meta'):
+                inner.set_ep_meta(copy.deepcopy(data['episode_meta']))
             try:
                 _, info = self.seeded_reset(self.reset_kwargs)
                 self.codec.restore(inner, data)
@@ -129,7 +130,8 @@ class Recorder:
                 self.has_restored_meta = True
                 return self.codec.observation(self.env), info
             except Exception:
-                inner.unset_ep_meta()
+                if 'episode_meta' in data and hasattr(inner, 'unset_ep_meta'):
+                    inner.unset_ep_meta()
                 raise
         # Replay path: recreate the initial state, then re-execute the prefix. The
         # wrapped step already advances the reward, so replay must not step it again.
