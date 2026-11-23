@@ -144,6 +144,47 @@ def test_milestone_signals_bind_to_named_simulator_entities(monkeypatch):
     object_utils.obj_inside_of.assert_called_once_with(env, "tray", fixture, partial_check=False)
 
 
+def test_fixture_milestones_take_fixture_objects():
+    door = dict(name="half_closed", check="door_half_closed", object="dishwasher", reference=None, share=0.5)
+    entities = {"objects": ["dish"], "fixtures": [], "door_fixtures": ["dishwasher"]}
+    assert validate_refinement(dict(target="closed", milestones=[door], final_share=0.5),
+                               ["closed"], entities, MILESTONE_CHECKS)
+    with pytest.raises(ValueError, match="Unknown milestone object"):
+        validate_refinement(dict(target="closed", milestones=[dict(door, object="dish")], final_share=0.5),
+                            ["closed"], entities, MILESTONE_CHECKS)
+
+
+def test_articulation_and_contact_milestones_read_simulator_state(monkeypatch):
+    object_utils = SimpleNamespace(check_obj_grasped=Mock(return_value=True),
+                                   check_obj_any_counter_contact=Mock(return_value=False))
+    monkeypatch.setitem(sys.modules, "robocasa.utils", SimpleNamespace(object_utils=object_utils))
+    dishwasher = SimpleNamespace(door_joint_names=["door"], get_joint_state=lambda env, names: {"door": 0.3})
+    stove = SimpleNamespace(get_knobs_state=lambda env: {"front_left": 0.2, "rear_left": 0.0},
+                            is_burner_on=lambda env, location: False)
+    machine = SimpleNamespace(get_state=lambda: {"turned_on": True})
+    gripper = object()
+    env = SimpleNamespace(
+        fixtures={"dishwasher": dishwasher, "stove": stove, "coffee_machine": machine},
+        objects={"spatula": "spatula", "carrot": "carrot"},
+        robots=[SimpleNamespace(gripper={"right": gripper})],
+        check_contact=lambda a, b: (a, b) == ("spatula", "carrot") or (a is gripper and b is stove),
+    )
+    checks = [
+        dict(name="half_open", check="door_half_open", object="dishwasher", reference=None),
+        dict(name="half_closed", check="door_half_closed", object="dishwasher", reference=None),
+        dict(name="knob", check="knob_turned", object="stove", reference=None),
+        dict(name="burner", check="burner_on", object="stove", reference=None),
+        dict(name="machine", check="machine_on", object="coffee_machine", reference=None),
+        dict(name="stir", check="object_contact", object="spatula", reference="carrot"),
+        dict(name="reach", check="gripper_fixture_contact", object="stove", reference=None),
+        dict(name="lift", check="object_lifted", object="spatula", reference=None),
+    ]
+    assert milestone_signals(env, checks) == {
+        "half_open": False, "half_closed": True, "knob": True, "burner": False,
+        "machine": True, "stir": True, "reach": True, "lift": True,
+    }
+
+
 def test_appendix_predicates_use_simulator_checks_and_native_completion(monkeypatch):
     object_utils = SimpleNamespace(
         check_obj_grasped=Mock(return_value=False),

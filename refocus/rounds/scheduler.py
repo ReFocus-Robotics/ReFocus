@@ -135,7 +135,7 @@ def _selection_schema(candidates, checks):
 
 
 def _check_descriptions(checks):
-    return {name: description for name, (description, _) in checks.items()}
+    return {name: spec[0] for name, spec in checks.items()}
 
 
 _MILESTONE_INSTRUCTIONS = (

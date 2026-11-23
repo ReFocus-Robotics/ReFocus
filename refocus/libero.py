@@ -60,7 +60,40 @@ MILESTONE_CHECKS = {
     "object_grasped": ("The gripper holds object. Set reference to null.", None),
     "object_on": ("Object rests on the object, fixture, or region named by reference.", "supports"),
     "object_in": ("Object is inside the region named by reference.", "regions"),
+    "half_open": ("The articulated object or region named by object (from articulated) is at least half way "
+                  "from closed to open. Set reference to null.", None, "articulated"),
+    "half_closed": ("The articulated object or region named by object (from articulated) is at least half way "
+                    "from open to closed. Set reference to null.", None, "articulated"),
+    "turned_on": ("The fixture named by object (from switchable) is turned on. Set reference to null.",
+                  None, "switchable"),
 }
+
+# Open fraction separating half-open from half-closed.
+_HALF = 0.5
+_HINGE_OR_SLIDE = (2, 3)  # mjtJoint: slide, hinge
+
+
+def _articulation(env, name):
+    """Return the joints of an articulated entity with its open and closed joint positions."""
+    state = env.object_states_dict[name]
+    owner = env.get_object(getattr(state, "parent_name", name))
+    ranges = getattr(owner, "object_properties", {}).get("articulation", {})
+    opened, closed = ranges.get("default_open_ranges"), ranges.get("default_close_ranges")
+    if not opened or not closed:
+        return None
+    joints = env.object_sites_dict[name].joints if name in env.object_sites_dict else owner.joints
+    model = env.sim.model
+    joints = [joint for joint in joints or ()
+              if model.jnt_type[model.joint_name2id(joint)] in _HINGE_OR_SLIDE]
+    if not joints:
+        return None
+    return joints, sum(opened) / 2, sum(closed) / 2
+
+
+def _open_fractions(env, name):
+    joints, opened, closed = _articulation(env, name)
+    qpos = [env.sim.data.qpos[env.sim.model.get_joint_qpos_addr(joint)] for joint in joints]
+    return [(value - closed) / (opened - closed) for value in qpos]
 
 
 def task_name(env):
@@ -86,10 +119,14 @@ def task_evidence(task):
 def milestone_entities(env):
     objects = sorted(env.objects_dict)
     regions = sorted(env.object_sites_dict)
+    states = getattr(env, "object_states_dict", {})
     return {
         "objects": objects,
         "regions": regions,
         "supports": sorted({*objects, *env.fixtures_dict, *regions}),
+        "articulated": sorted(name for name in states if _articulation(env, name)),
+        "switchable": sorted(name for name in env.fixtures_dict
+                             if hasattr(env.get_object(name), "turn_on")),
     }
 
 
@@ -103,6 +140,12 @@ def milestone_signals(env, checks):
             satisfied = env._eval_predicate(["on", obj, ref])
         elif check == "object_in":
             satisfied = env._eval_predicate(["in", obj, ref])
+        elif check == "half_open":
+            satisfied = all(fraction >= _HALF for fraction in _open_fractions(env, obj))
+        elif check == "half_closed":
+            satisfied = all(fraction <= _HALF for fraction in _open_fractions(env, obj))
+        elif check == "turned_on":
+            satisfied = env._eval_predicate(["turnon", obj])
         else:
             raise ValueError("Unsupported milestone check")
         signals[item["name"]] = bool(satisfied)

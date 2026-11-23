@@ -196,9 +196,11 @@ class Tests(unittest.TestCase):
 
         env = SimpleNamespace(objects_dict={'moka_pot_1': 1},
                               object_sites_dict={'flat_stove_1_cook_region': 1},
-                              fixtures_dict={'flat_stove_1': 1})
+                              fixtures_dict={'flat_stove_1': 1},
+                              get_object=lambda name: SimpleNamespace(turn_on=None))
         entities = libero.milestone_entities(env)
         self.assertIn('flat_stove_1_cook_region', entities['regions'])
+        self.assertEqual(entities['switchable'], ['flat_stove_1'])
         refinement = dict(target='moka_pot_on_stove', final_share=0.6, milestones=[
             dict(name='pot_on_cook_region', check='object_on', object='moka_pot_1',
                  reference='flat_stove_1_cook_region', share=0.4)])
@@ -208,6 +210,25 @@ class Tests(unittest.TestCase):
         bad['milestones'][0]['reference'] = 'basket_1_contain_region'
         with self.assertRaises(ValueError):
             validate_refinement(bad, ['moka_pot_on_stove'], entities, libero.MILESTONE_CHECKS)
+
+    def test_libero_partial_closure_uses_the_region_joint(self):
+        from refocus import libero
+
+        cabinet = SimpleNamespace(object_properties={'articulation': {
+            'default_open_ranges': [-0.16, -0.14], 'default_close_ranges': [0.0, 0.005]}}, joints=[])
+        region = SimpleNamespace(joints=['drawer_joint'])
+        qpos = {'drawer_joint': -0.15}
+        model = SimpleNamespace(jnt_type={0: 2}, joint_name2id=lambda joint: 0,
+                                get_joint_qpos_addr=lambda joint: joint)
+        env = SimpleNamespace(
+            object_states_dict={'cabinet_1_bottom_region': SimpleNamespace(parent_name='cabinet_1')},
+            object_sites_dict={'cabinet_1_bottom_region': region},
+            get_object={'cabinet_1': cabinet}.get, sim=SimpleNamespace(model=model, data=SimpleNamespace(qpos=qpos)))
+        checks = [dict(name=name, check=name, object='cabinet_1_bottom_region', reference=None, share=0.5)
+                  for name in ('half_open', 'half_closed')]
+        self.assertEqual(libero.milestone_signals(env, checks), {'half_open': True, 'half_closed': False})
+        qpos['drawer_joint'] = -0.03
+        self.assertEqual(libero.milestone_signals(env, checks), {'half_open': False, 'half_closed': True})
 
     def test_visual_capture_uses_the_recorded_camera_views(self):
         base = np.zeros((24, 32, 3), dtype=np.uint8)

@@ -10,7 +10,8 @@ def _valid_share(value):
 def validate_refinement(refinement, stage, entities, checks):
     """Return a refinement whose target lies in ``stage`` and whose checks are verifiable.
 
-    ``checks`` maps a check name to ``(description, reference_kind)``; a check whose
+    ``checks`` maps a check name to ``(description, reference_kind[, object_kind])``.
+    The object must be an entity of ``object_kind`` (default ``"objects"``). A check whose
     reference kind is None takes a null reference, otherwise the reference must be an
     entity of that kind.
     """
@@ -36,13 +37,15 @@ def validate_refinement(refinement, stage, entities, checks):
             raise ValueError("Milestone names must be distinct from each other and the stage subtasks")
         if not isinstance(check, str) or check not in checks:
             raise ValueError("Unsupported milestone check")
-        if not isinstance(obj, str) or obj not in entities["objects"]:
+        spec = checks[check]
+        object_kind = spec[2] if len(spec) > 2 else "objects"
+        if not isinstance(obj, str) or obj not in entities.get(object_kind, ()):
             raise ValueError("Unknown milestone object")
-        kind = checks[check][1]
+        kind = spec[1]
         if kind is None:
             valid_reference = ref is None
         else:
-            valid_reference = isinstance(ref, str) and ref != obj and ref in entities[kind]
+            valid_reference = isinstance(ref, str) and ref != obj and ref in entities.get(kind, ())
         if not valid_reference:
             raise ValueError("Invalid milestone reference")
         if (check, obj, ref) in predicates:
