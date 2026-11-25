@@ -35,9 +35,8 @@ raw Scheduler replies are kept alongside it.
 | Prefix | Normal task start | Target stage done or full horizon |
 | Suffix | Restored training entry | Remaining full-task horizon |
 
-`--local-mix` sets the probabilities in Normal, Suffix, Prefix order
-(0.50 / 0.25 / 0.25). A task with no eligible window falls back to a
-normal-start full-task rollout.
+`--local-mix` sets the probabilities in Normal, Suffix, Prefix order.
+A task with no eligible window falls back to a normal-start full-task rollout.
 
 RoboCasa365 and LIBERO restore saved MuJoCo integration state, controller
 state, observables, and RNG. The worker rebuilds the entry's scene using the
