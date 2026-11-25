@@ -4,6 +4,7 @@
 
 <p align="center">
   <a href="https://arxiv.org/abs/2611.32639"><img src="https://img.shields.io/badge/arXiv-Paper-b31b1b?logo=arxiv&amp;logoColor=white" alt="arXiv Paper"></a>
+  <a href="https://huggingface.co/papers/2611.32639"><img src="https://img.shields.io/badge/Hugging%20Face-Paper-FFD21E?logo=huggingface" alt="Hugging Face Paper"></a>
   <a href="https://refocus-robotics.github.io/"><img src="https://img.shields.io/badge/Project-Website-0077b5" alt="Project Website"></a>
   <a href="https://huggingface.co/datasets/lhy-zju/ReFocus"><img src="https://img.shields.io/badge/Hugging%20Face-Models-FFD21E?logo=huggingface" alt="Hugging Face Models"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-CC_BY--NC_4.0-green" alt="License CC BY-NC 4.0"></a>
@@ -29,7 +30,7 @@ Install the training stack and simulator assets by following [docs/INSTALL.md](d
 
 Checkpoints:
 
-- **RoboCasa365** — train a π<sub>0.5</sub> PyTorch SFT checkpoint with [launch/sft_pi05.sh](launch/sft_pi05.sh), starting from [pi05_pretrain_human300](https://huggingface.co/robocasa/robocasa365_checkpoints/tree/main/pi05_pretrain_human300/multitask_learning/75000).
+- **RoboCasa365** — train a π<sub>0.5</sub> checkpoint with [launch/sft_pi05.sh](launch/sft_pi05.sh), starting from [pi05_pretrain_human300](https://huggingface.co/robocasa/robocasa365_checkpoints/tree/main/pi05_pretrain_human300/multitask_learning/75000).
 - **LIBERO-Long** — the [RLinf π<sub>0.5</sub> LIBERO SFT checkpoint](https://huggingface.co/RLinf/RLinf-Pi05-LIBERO-130-fullshot-SFT). Set `CKPT_ROOT` to the directory that holds it.
 
 ## Training
