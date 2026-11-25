@@ -1,0 +1,29 @@
+diff --git a/rlinf/models/embodiment/openpi/openpi_action_model.py b/rlinf/models/embodiment/openpi/openpi_action_model.py
+--- a/rlinf/models/embodiment/openpi/openpi_action_model.py
++++ b/rlinf/models/embodiment/openpi/openpi_action_model.py
+@@ -898,6 +898,11 @@
+             inputs_embeds=[prefix_embs, None],
+             use_cache=True,
+         )
++        if past_key_values is None:
++            raise RuntimeError(
++                "OpenPI PPO requires a prefix KV cache. For a trainable prefix, "
++                "disable gradient checkpointing on the prefix language model."
++            )
+         return prefix_output, prefix_pad_masks, past_key_values
+ 
+     def _compute_value_from_suffix(self, suffix_out):
+@@ -1029,6 +1034,13 @@
+         sigma_safe = torch.where(mask, torch.ones_like(sigma), sigma)
+         entropy = 0.5 * torch.log(2 * math.pi * math.e * (sigma_safe**2))
+         return entropy
++
++    def train(self, mode=True):
++        super().train(mode)
++        if mode and self.config.train_expert_only:
++            # PPO recomputes action likelihoods with the same cached prefix as rollout.
++            self.paligemma_with_expert.paligemma.eval()
++        return self
+ 
+     def freeze_vlm(self):
+         if self.config.train_expert_only:

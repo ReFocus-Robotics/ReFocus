@@ -50,6 +50,7 @@ RLINF_COMMIT=499363965432843cdbae607a561d59b68f785d34
 
 clone RLinf/RLinf "$RLINF_COMMIT" "$PROJECT_ROOT/RLinf"
 apply_patch "$PROJECT_ROOT/RLinf" rlinf_core.patch
+apply_patch "$PROJECT_ROOT/RLinf" openpi_ppo_prefix_cache.patch
 cp -r "$REPO/configs/." "$PROJECT_ROOT/RLinf/examples/embodiment/config/"
 echo "  installed configs/ into RLinf/examples/embodiment/config/"
 
@@ -68,6 +69,7 @@ if [ "$WITH_LIBERO" = 1 ]; then
   mkdir -p "$LIBERO_RL_ROOT"
   clone RLinf/RLinf "$RLINF_COMMIT" "$LIBERO_RL_ROOT/RLinf"
   apply_patch "$LIBERO_RL_ROOT/RLinf" rlinf_core.patch
+  apply_patch "$LIBERO_RL_ROOT/RLinf" openpi_ppo_prefix_cache.patch
   apply_patch "$LIBERO_RL_ROOT/RLinf" libero_addon.patch
   # The addon patch already contains the round hooks for LIBERO.
   touch "$LIBERO_RL_ROOT/RLinf/.refocus_round_hooks_v1"
