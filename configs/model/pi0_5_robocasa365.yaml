@@ -9,8 +9,8 @@
 # 3 views, 12-D action). norm_stats are loaded from <model_path>/robocasa365/.
 model_type: "openpi"
 
-# Set in the training config / sbatch (converted pi05 PyTorch ckpt).
-model_path: "/path/to/model/openpi_pi05_robocasa365"
+# Path to the converted Composite-Seen SFT checkpoint.
+model_path: "${oc.env:PI05_SFT_CKPT}"
 
 precision: null # for openpi, precision is null, please do not change this value
 

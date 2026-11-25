@@ -661,34 +661,34 @@ index 0000000..2469bc1
 +                #   _dr_total: incremental reward this step (0 most steps,
 +                #              0..1/N_total at first completion of a progress,
 +                #              1.0 at first outcome=True)
-+                #   _dr_inst_*: also report the instantaneous (variant A) values
-+                #              for diagnostics so we can compare side-by-side
++                #   _dr_inst_*: instantaneous (variant A) values for comparison
++                #              with the incremental rewards
 +                _dr_total, _dr_prog_inc, _dr_out_inc = 0.0, 0.0, 0.0
 +                _dr_inst_total, _dr_inst_prog, _dr_inst_out = 0.0, 0.0, 0.0
 +                _dr_nd, _dr_nt = 0, 0
 +                try:
-+                    # The structrl copy in site-packages is a stale partial
-+                    # (only __init__ + robocasa_data_config), missing the
-+                    # timing-reward modules. The full source lives in the
-+                    # project root, so prepend it to sys.path before importing
-+                    # so we resolve to source, not the stale site-packages copy.
-+                    # Independent of PYTHONPATH inheritance into spawned workers.
++                    # Use the project checkout for StructRL reward processing.
++                    # A separately installed package may omit the reward modules.
++                    #
++                    # Resolve the project root in each worker before importing
++                    # the subtask checker and timing rewards. This also covers
++                    # subprocesses that do not inherit the parent's PYTHONPATH.
 +                    import os
 +                    import sys
 +                    _proj_root = os.environ.get(
 +                        "STRUCTRL_PROJECT_ROOT",
 +                        os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..")),
 +                    )
-+                    # The sbatch heredoc may leave this as an unexpanded
-+                    # literal (e.g. '"${PROJECT_ROOT}"') when eval'd in the
-+                    # main shell. Validate it points at a real structrl dir;
-+                    # fall back to the known absolute path otherwise.
++                    # Launchers can pass an unexpanded root variable.
++                    # Check that the resolved root contains the package.
++                    # If the override is invalid, derive the root from the
++                    # RLinf source file's location.
 +                    if not os.path.isdir(os.path.join(_proj_root, "structrl")):
 +                        _proj_root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", ".."))
 +                    if _proj_root not in sys.path:
 +                        sys.path.insert(0, _proj_root)
-+                    # Drop any already-imported stale structrl so the source
-+                    # copy (with subtask_checker etc.) is the one loaded.
++                    # Clear imports from site-packages before loading
++                    # StructRL modules from the project checkout.
 +                    _stale = getattr(
 +                        sys.modules.get("structrl", None), "__file__", ""
 +                    ) or ""
@@ -807,9 +807,9 @@ index 0000000..2469bc1
 +                    latched_outcome = bool(tinfo["cumulative_outcome"] > 0)
 +                    latched_n_done = _dr_nd
 +                except Exception as _e:
-+                    # First-time error — log to stderr in subprocess so we
-+                    # can see WHY dense reward fails. Subsequent errors
-+                    # silenced to avoid spam.
++                    # Log the first dense reward error in each worker.
++                    # Suppress duplicate tracebacks for later exceptions
++                    # in the same process.
 +                    if not getattr(_worker, "_logged_dr_err", False):
 +                        import sys
 +                        import traceback
@@ -2681,13 +2681,13 @@ index fa51372..dd99b5e 100644
          }
          rollout_metrics.update(advantages_metrics)
  
-+        # Per-chunk advantage profile so we can SEE the backward-propagation
-+        # shape across the 182-chunk horizon. If done_shift is working, this
-+        # should be a roughly increasing curve toward the success chunk; under
-+        # the original done-at-success bug, you'd see [0, 0, ..., 0, spike].
-+        # Shape coming in is either [n_chunk_step, bsz, num_action_chunks] or
-+        # [n_chunk_step, bsz, 1] (chunk_level summed). We collapse env+chunk
-+        # axes and probe ~9 sample chunks evenly across the horizon.
++        # The advantage profile shows how credit propagates across rollout
++        # steps, including those preceding a successful terminal transition.
++        #
++        # Inputs have shape [rollout_steps, batch, action_chunks] or
++        # [rollout_steps, batch, 1] for chunk-level advantages. Average the
++        # batch and action axes, then sample evenly across the rollout
++        # horizon for logging.
 +        try:
 +            adv_t = advantages.detach().float()
 +            if adv_t.dim() >= 2:
@@ -3286,18 +3286,18 @@ index c2f8acb..a6062c7 100644
 +                if bool(_chunk_done.any()):
 +                    _ep_returns = self._dense_ep_cum[_chunk_done].clone()
 +                    self._dense_ep_cum[_chunk_done] = 0.0
-+                # Log every chunk so we can see dense_reward distribution
-+                # evolve over training. Also publish stats to env_info so
-+                # they show up in tensorboard as env/dense_reward_*.
++                # Compute per-chunk dense reward statistics and publish
++                # them through env_info for TensorBoard under the
++                # env/dense_reward_* metric namespace.
 +                d_max = float(dense.max())
 +                d_mean = float(dense.mean())
 +                d_min = float(dense.min())
 +                d_pos_frac = float((dense > 0).float().mean())
-+                # Aggregate the side-channel instantaneous (variant-A) and
-+                # latched-progress diagnostics for logging. These are NOT
-+                # added to chunk_rewards — they're informational only so
-+                # we can compare incremental vs instantaneous side-by-side
-+                # in tensorboard and confirm the latching logic.
++                # Aggregate instantaneous and latched progress diagnostics
++                # for TensorBoard. Both metrics describe subtask progress
++                # within the chunk. The instantaneous metric reflects the
++                # current state, while the latched metric retains previously
++                # credited events. These metrics are for logging only.
 +                inst_sum = 0.0
 +                inst_count = 0
 +                latched_nd_max = 0
@@ -3395,11 +3395,11 @@ index c2f8acb..a6062c7 100644
 +        # Accumulate the per-step timing reward (info["dense_reward"]) across
 +        # the whole episode and deliver it ONLY at the success chunk (or, for
 +        # failed traj, at the truncation chunk). All other chunks: reward=0.
-+        # Same TOTAL signal as the dense path, but no intermediate shaping —
-+        # PPO/GAE has to propagate the one terminal number back along all
-+        # 182 chunks. Pairs with done_shift (separate block below) to guarantee
-+        # the delivered reward flows back to chunks 0..k without leaking
-+        # forward into chunk k. Mutually exclusive with dense_reward.
++        # Preserve the cumulative timing reward and deliver it once.
++        # GAE propagates the resulting credit across preceding chunks.
++        # The done_shift option keeps the success chunk available for GAE
++        # while preserving the boundary before post-success chunks.
++        # Mutually exclusive with dense_reward.
 +        elif bool(self.cfg.env.train.get("final_only_reward", {}).get("enabled", False)):
 +            try:
 +                num_envs, chunk_size = chunk_rewards.shape

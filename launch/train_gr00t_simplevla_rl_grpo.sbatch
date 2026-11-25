@@ -48,8 +48,7 @@ echo "timing_json: ${STRUCTRL_TIMING_JSON}"
 export MUJOCO_GL=egl
 export PYOPENGL_PLATFORM=egl
 export EMBODIED_PATH REPO_PATH
-# PROJECT_ROOT FIRST so `import structrl.*` resolves to the live source tree,
-# not the stale partial copy in .venv-rlinf/site-packages.
+# Give the checkout precedence when resolving structrl imports.
 export STRUCTRL_PROJECT_ROOT="${PROJECT_ROOT}"
 export PYTHONPATH="${PROJECT_ROOT}/grpo_diag:${PROJECT_ROOT}:${REPO_PATH}:${PROJECT_ROOT}/robocasa:${PROJECT_ROOT}/robosuite:${PROJECT_ROOT}/Isaac-GR00T:${PYTHONPATH:-}"
 

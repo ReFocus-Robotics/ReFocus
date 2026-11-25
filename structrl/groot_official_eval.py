@@ -1,4 +1,4 @@
-"""Wrapper around gr00t.eval.simulation.run_evaluation for our checkpoint.
+"""Evaluate a GR00T checkpoint with gr00t.eval.simulation.run_evaluation.
 
 Workflow:
   1. Start inference server in a background subprocess (loads GR00T policy on GPU)
@@ -23,10 +23,8 @@ import sys
 import time
 from pathlib import Path
 
-# Move cwd out of project root so the local `robocasa/` source dir does not
-# get merged with the editable-installed package via namespace-package logic.
-# Also DO NOT put PROJECT_ROOT on sys.path — structrl is installed as a real
-# package under .venv-groot/lib/python3.11/site-packages/structrl.
+# Run outside the checkout to avoid namespace resolution through the local
+# robocasa directory. Resolve structrl from the active Python environment.
 os.chdir("/tmp")
 sys.path = [p for p in sys.path if not (
     (Path(p or ".").resolve() / "robocasa").is_dir()
@@ -126,8 +124,7 @@ def start_inference_server(port: int, ckpt_path: str = CKPT_PATH) -> subprocess.
     ]
     print(f"Starting inference server: {' '.join(cmd)}", flush=True)
     env = os.environ.copy()
-    # structrl is installed as a real package in venv-groot site-packages;
-    # cwd=/tmp keeps the local robocasa/ source dir from shadowing.
+    # Isolate server imports from the checkout and inherited PYTHONPATH.
     env.pop("PYTHONPATH", None)
     return subprocess.Popen(cmd, env=env, cwd="/tmp", stdout=sys.stdout, stderr=sys.stderr)
 
