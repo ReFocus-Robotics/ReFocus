@@ -29,4 +29,4 @@ export GPUS_PER_NODE=8 NUM_NODES=2
 
 TensorBoard events and `train.log` remain in `RUN_DIR`; emitted scalar metrics are also mirrored into `RUN_DIR/checkpoints/metrics/per_step_metrics.jsonl`.
 
-For paper comparisons, use the author's offline `launch/eval_pi05_composite_seen.sbatch` (16 tasks × 100 episodes, target split, replan 50, denoise 10 and original task horizons), not the training YAML's 32 evaluation environments. Record the user's fixed per-task evaluation seeds 7–11 separately from the author's reset policy.
+For paper comparisons, use `launch/eval_pi05_composite_seen.sbatch` with the original StructRL evaluation protocol (16 tasks × 100 episodes, target split, 50 executed actions per replan, 10 denoising steps, and original task horizons). Follow the original protocol's reset and scenario settings.

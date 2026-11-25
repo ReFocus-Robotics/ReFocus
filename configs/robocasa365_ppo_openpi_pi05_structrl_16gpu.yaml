@@ -1,4 +1,4 @@
-# StructRL paper recipe with the user-requested 16-GPU batch adaptation.
+# StructRL recipe with batch settings for 16 GPUs.
 # Includes the overrides from launch/train_pi05_structrl_ppo.sbatch.
 # PPO with pi0.5 (openpi, PyTorch) on RoboCasa365 Composite-Seen: StructRL and Sparse-RL, with the same
 # rollout budget as GR00T-N1.5 (512 rollouts per iteration). The launchers set 10 denoising steps,

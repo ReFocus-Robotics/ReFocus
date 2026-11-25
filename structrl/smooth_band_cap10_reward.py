@@ -39,8 +39,7 @@ class SmoothBandCap10Reward(SmoothBandReward):
 
     def _ratio_band_reward(self, ratio: float, sub_base: float) -> float:
         # Continuous decay capped at BAND_CAP as ratio->0; anchor(ratio=1)=0.5.
-        # sub_base is intentionally NOT used: the cap is now an absolute 1.0
-        # rather than CAP_MULT*sub_base, matching the user-requested 1.0 band.
+        # The cap is an absolute 1.0, independent of sub_base.
         return BAND_CAP / (1.0 + max(ratio, 0.0))
 
 

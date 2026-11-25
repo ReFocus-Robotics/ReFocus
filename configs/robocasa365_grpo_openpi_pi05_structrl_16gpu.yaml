@@ -1,4 +1,4 @@
-# StructRL paper recipe with the user-requested 16-GPU batch adaptation.
+# StructRL recipe with batch settings for 16 GPUs.
 # Includes the overrides from launch/train_pi05_structrl_grpo.sbatch.
 # GRPO with pi0.5 on RoboCasa365 Composite-Seen: the SimpleVLA-RL baseline and StructRL-GRPO, with the
 # SimpleVLA-RL recipe of robocasa365_grpo_gr00t_composite_seen.yaml (adv_type=grpo). The launchers set

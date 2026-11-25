@@ -249,13 +249,13 @@ index 0000000..18505cf
 +# See the License for the specific language governing permissions and
 +# limitations under the License.
 +
-+"""RoboCasa365 environment for RLinf, wrapping the user's GrootRoboCasaEnv.
++"""RoboCasa365 environment for RLinf, wrapping GrootRoboCasaEnv.
 +
-+This is the REAL RoboCasa365 (v1.0.0) gym env that the user's GR00T checkpoint
-+was SFT'd against, so observations/actions are byte-for-byte aligned with the
-+ckpt's training spec. We reuse the generic rollout machinery (metrics,
-+chunk_step, auto-reset, reward) from RobocasaEnv and only override the
-+env-construction and obs/action plumbing.
++RoboCasa365 v1.0.0 supplies the observations and actions expected by the
++GR00T SFT checkpoint. The wrapper inherits rollout metrics, chunk stepping,
++automatic resets, and rewards from RobocasaEnv. It adapts environment
++construction and translates observations and actions between the RLinf
++and GrootRoboCasaEnv interfaces.
 +
 +Data contract bridged here:
 +  - GrootRoboCasaEnv emits GR00T-format dict obs (state.*, video.res256_*,
@@ -3336,9 +3336,9 @@ index c2f8acb..a6062c7 100644
 +                    latched_outcome_frac = (
 +                        latched_outcome_n / latched_outcome_total
 +                    )
-+                # Per-traj cumulative return stats (only on chunks where some
-+                # episode finished). This is the headline diagnostic the user
-+                # asked for: 512 trajectories should span ~ -1.x .. ~3.
++                # Report cumulative reward statistics for episodes that end
++                # in this chunk. Each episode contributes its accumulated
++                # dense reward.
 +                _ep_str = ""
 +                if _ep_returns is not None and _ep_returns.numel() > 0:
 +                    _ep_str = (
